@@ -5,15 +5,50 @@ import {
   Container,
   Box,
   Typography,
-  Chip,
+  Button,
+  Alert,
 } from "@mui/material";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import BoltIcon from "@mui/icons-material/Bolt";
 import theme from "./theme";
 import UploadZone from "./components/UploadZone";
+import SettingsPanel from "./components/SettingsPanel";
 import JobTracker from "./components/JobTracker";
+import { createJob, JobSettings } from "./api/client";
+
+const DEFAULT_SETTINGS: JobSettings = {
+  language: "auto",
+  animation: "pop",
+  color: "#FFFFFF",
+};
 
 export default function App() {
+  const [file, setFile] = useState<File | null>(null);
+  const [settings, setSettings] = useState<JobSettings>(DEFAULT_SETTINGS);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleGenerate = async () => {
+    if (!file) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const { job_id } = await createJob(file, settings);
+      setJobId(job_id);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReset = () => {
+    setJobId(null);
+    setFile(null);
+    setError(null);
+    setSettings(DEFAULT_SETTINGS);
+  };
 
   return (
     <ThemeProvider theme={theme}>
@@ -28,13 +63,20 @@ export default function App() {
         <Container maxWidth="sm">
           <Box py={10} textAlign="center">
             {/* Header */}
-            <Box display="flex" justifyContent="center" alignItems="center" gap={1.5} mb={2}>
-              <AutoAwesomeIcon sx={{ color: "primary.main", fontSize: 36 }} />
+            <Box
+              display="flex"
+              justifyContent="center"
+              alignItems="center"
+              gap={1.5}
+              mb={1.5}
+            >
+              <AutoAwesomeIcon sx={{ color: "primary.main", fontSize: 34 }} />
               <Typography
                 variant="h3"
                 fontWeight={800}
                 sx={{
-                  background: "linear-gradient(135deg, #9D80FF 0%, #00E5FF 100%)",
+                  background:
+                    "linear-gradient(135deg, #9D80FF 0%, #00E5FF 100%)",
                   backgroundClip: "text",
                   WebkitBackgroundClip: "text",
                   WebkitTextFillColor: "transparent",
@@ -43,22 +85,49 @@ export default function App() {
                 AutoSubs
               </Typography>
             </Box>
-
-            <Typography variant="body1" color="text.secondary" mb={1}>
-              Drop a video — get animated karaoke subtitles in seconds.
+            <Typography variant="body1" color="text.secondary" mb={6}>
+              Анімовані субтитри для твого відео за секунди
             </Typography>
 
-            <Box display="flex" justifyContent="center" gap={1} mb={6}>
-              {["AssemblyAI", "FFmpeg", "ASS karaoke"].map((t) => (
-                <Chip key={t} label={t} size="small" variant="outlined" sx={{ opacity: 0.6 }} />
-              ))}
-            </Box>
-
-            {/* Main panel */}
+            {/* ── Job view ───────────────────────────────────────────────── */}
             {jobId ? (
-              <JobTracker jobId={jobId} onReset={() => setJobId(null)} />
+              <JobTracker jobId={jobId} onReset={handleReset} />
             ) : (
-              <UploadZone onJobCreated={setJobId} />
+              /* ── Upload + settings view ─────────────────────────────── */
+              <Box display="flex" flexDirection="column" gap={2.5}>
+                <UploadZone file={file} onFile={setFile} />
+
+                {file && (
+                  <>
+                    <SettingsPanel settings={settings} onChange={setSettings} />
+
+                    {error && <Alert severity="error">{error}</Alert>}
+
+                    <Button
+                      variant="contained"
+                      size="large"
+                      disabled={loading}
+                      onClick={handleGenerate}
+                      startIcon={<BoltIcon />}
+                      sx={{
+                        py: 1.8,
+                        fontSize: "1rem",
+                        fontWeight: 700,
+                        letterSpacing: 1,
+                        background:
+                          "linear-gradient(135deg, #7C5CFC 0%, #00C9FF 100%)",
+                        "&:hover": {
+                          background:
+                            "linear-gradient(135deg, #9D80FF 0%, #00E5FF 100%)",
+                        },
+                        boxShadow: "0 4px 24px #7C5CFC44",
+                      }}
+                    >
+                      {loading ? "Завантаження…" : "⚡ ГЕНЕРУВАТИ СУБТИТРИ"}
+                    </Button>
+                  </>
+                )}
+              </Box>
             )}
           </Box>
         </Container>

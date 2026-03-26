@@ -1,11 +1,10 @@
-import asyncio
 import shutil
 import subprocess
 import uuid
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 
 from app.config import STORAGE_DIR, MAX_UPLOAD_MB
@@ -15,13 +14,10 @@ from app.services.subtitle import create_ass
 
 router = APIRouter(prefix="/api/jobs")
 
-# In-memory job store (single replica; add Redis for horizontal scaling)
 _jobs: Dict[str, Job] = {}
 
+VALID_ANIMATIONS = {"karaoke", "pop", "fade"}
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ──────────────────────────────────────────────────────────────────────────────
 
 def _set(job: Job, status: JobStatus, progress: int) -> None:
     job.status = status
@@ -29,7 +25,7 @@ def _set(job: Job, status: JobStatus, progress: int) -> None:
     job.label = STATUS_LABELS[status]
 
 
-def _get_job_or_404(job_id: str) -> Job:
+def _get_or_404(job_id: str) -> Job:
     job = _jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -40,21 +36,24 @@ def _get_job_or_404(job_id: str) -> Job:
 # Background worker
 # ──────────────────────────────────────────────────────────────────────────────
 
-async def _process(job_id: str, input_path: Path, job_dir: Path) -> None:
+async def _process(
+    job_id: str,
+    input_path: Path,
+    job_dir: Path,
+    language: Optional[str],
+    animation: str,
+    color: str,
+) -> None:
     job = _jobs[job_id]
     try:
-        # ── 1. Transcribe ─────────────────────────────────────────────────────
         _set(job, JobStatus.TRANSCRIBING, 20)
-        words = await transcribe(str(input_path))
+        words = await transcribe(str(input_path), language)
 
-        # ── 2. Generate ASS ───────────────────────────────────────────────────
         _set(job, JobStatus.RENDERING, 55)
         ass_path = job_dir / "subtitles.ass"
-        create_ass(words, str(ass_path))
+        create_ass(words, str(ass_path), animation=animation, color=color)
 
-        # ── 3. FFmpeg burn-in ─────────────────────────────────────────────────
         output_path = job_dir / "output.mp4"
-        # Escape Windows-style backslashes / colons for libass path filter
         ass_escaped = str(ass_path).replace("\\", "/").replace(":", "\\:")
         cmd = [
             "ffmpeg", "-y",
@@ -84,24 +83,31 @@ async def _process(job_id: str, input_path: Path, job_dir: Path) -> None:
 async def create_job(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    language: Optional[str] = Form(None),
+    animation: str = Form("karaoke"),
+    color: str = Form("#FFFFFF"),
 ):
     suffix = Path(file.filename).suffix.lower() if file.filename else ".mp4"
     if suffix not in {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}:
-        raise HTTPException(status_code=400, detail="Unsupported video format")
+        raise HTTPException(400, "Unsupported video format")
+
+    if animation not in VALID_ANIMATIONS:
+        animation = "karaoke"
+
+    if not color.startswith("#") or len(color) != 7:
+        color = "#FFFFFF"
 
     job_id = str(uuid.uuid4())
     job_dir = STORAGE_DIR / job_id
     job_dir.mkdir(parents=True)
 
     input_path = job_dir / f"input{suffix}"
-
-    # Stream to disk
-    chunk_size = 1024 * 1024  # 1 MB
-    total = 0
     limit = MAX_UPLOAD_MB * 1024 * 1024
+    total = 0
+
     with open(input_path, "wb") as fh:
         while True:
-            chunk = await file.read(chunk_size)
+            chunk = await file.read(1024 * 1024)
             if not chunk:
                 break
             total += len(chunk)
@@ -115,26 +121,26 @@ async def create_job(
     _set(job, JobStatus.PENDING, 5)
     _jobs[job_id] = job
 
-    background_tasks.add_task(_process, job_id, input_path, job_dir)
+    background_tasks.add_task(
+        _process, job_id, input_path, job_dir, language, animation, color
+    )
 
     return {"job_id": job_id}
 
 
 @router.get("/{job_id}")
 async def get_job(job_id: str):
-    return _get_job_or_404(job_id)
+    return _get_or_404(job_id)
 
 
 @router.get("/{job_id}/download")
 async def download_result(job_id: str):
-    job = _get_job_or_404(job_id)
+    job = _get_or_404(job_id)
     if job.status != JobStatus.DONE:
         raise HTTPException(400, "Job not finished yet")
-
     output_path = STORAGE_DIR / job_id / "output.mp4"
     if not output_path.exists():
         raise HTTPException(500, "Output file missing")
-
     return FileResponse(
         path=str(output_path),
         media_type="video/mp4",

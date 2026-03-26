@@ -1,18 +1,13 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import {
-  Box,
-  Typography,
-  CircularProgress,
-  Alert,
-  useTheme,
-} from "@mui/material";
+import { Box, Typography, useTheme, Chip, IconButton } from "@mui/material";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import MovieIcon from "@mui/icons-material/Movie";
-import { createJob } from "../api/client";
+import CloseIcon from "@mui/icons-material/Close";
 
 interface Props {
-  onJobCreated: (jobId: string) => void;
+  file: File | null;
+  onFile: (f: File | null) => void;
 }
 
 const ACCEPTED = {
@@ -24,40 +19,34 @@ const ACCEPTED = {
   "video/x-m4v": [".m4v"],
 };
 
-export default function UploadZone({ onJobCreated }: Props) {
+function formatSize(bytes: number) {
+  if (bytes > 1024 * 1024 * 1024)
+    return (bytes / 1024 / 1024 / 1024).toFixed(1) + " GB";
+  return (bytes / 1024 / 1024).toFixed(1) + " MB";
+}
+
+export default function UploadZone({ file, onFile }: Props) {
   const theme = useTheme();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const onDrop = useCallback(
-    async (accepted: File[]) => {
-      if (!accepted.length) return;
-      setError(null);
-      setLoading(true);
-      try {
-        const { job_id } = await createJob(accepted[0]);
-        onJobCreated(job_id);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Upload failed");
-      } finally {
-        setLoading(false);
-      }
+    (accepted: File[]) => {
+      if (accepted.length) onFile(accepted[0]);
     },
-    [onJobCreated]
+    [onFile]
   );
 
-  const { getRootProps, getInputProps, isDragActive, isDragReject } =
-    useDropzone({
-      onDrop,
-      accept: ACCEPTED,
-      maxFiles: 1,
-      disabled: loading,
-    });
+  const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
+    onDrop,
+    accept: ACCEPTED,
+    maxFiles: 1,
+  });
 
   const borderColor = isDragReject
     ? theme.palette.error.main
     : isDragActive
     ? theme.palette.primary.light
+    : file
+    ? theme.palette.primary.main
     : theme.palette.divider;
 
   return (
@@ -66,12 +55,14 @@ export default function UploadZone({ onJobCreated }: Props) {
         {...getRootProps()}
         sx={{
           border: `2px dashed ${borderColor}`,
-          borderRadius: 4,
-          p: 8,
-          cursor: loading ? "not-allowed" : "pointer",
+          borderRadius: 3,
+          p: file ? 3 : 6,
+          cursor: "pointer",
           transition: "all 0.2s ease",
           background: isDragActive
             ? `${theme.palette.primary.main}18`
+            : file
+            ? `${theme.palette.primary.main}10`
             : "transparent",
           "&:hover": {
             borderColor: theme.palette.primary.main,
@@ -81,36 +72,45 @@ export default function UploadZone({ onJobCreated }: Props) {
       >
         <input {...getInputProps()} />
 
-        {loading ? (
-          <Box display="flex" flexDirection="column" alignItems="center" gap={2}>
-            <CircularProgress color="primary" size={52} />
-            <Typography color="text.secondary">Uploading…</Typography>
+        {file ? (
+          <Box display="flex" alignItems="center" gap={2}>
+            <MovieIcon sx={{ color: "primary.main", fontSize: 36 }} />
+            <Box flex={1} textAlign="left">
+              <Typography fontWeight={600} noWrap>
+                {file.name}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {formatSize(file.size)}
+              </Typography>
+            </Box>
+            <Chip label="змінити" size="small" variant="outlined" />
           </Box>
         ) : (
           <Box display="flex" flexDirection="column" alignItems="center" gap={2}>
             {isDragActive ? (
-              <MovieIcon sx={{ fontSize: 64, color: "primary.main" }} />
+              <MovieIcon sx={{ fontSize: 56, color: "primary.main" }} />
             ) : (
-              <CloudUploadIcon
-                sx={{ fontSize: 64, color: "text.secondary", opacity: 0.6 }}
-              />
+              <Box sx={{ fontSize: 56 }}>🎬</Box>
             )}
             <Typography variant="h6" fontWeight={600}>
               {isDragActive
-                ? "Drop your video here"
-                : "Drag & drop a video, or click to browse"}
+                ? "Кидай відео сюди"
+                : "Кинь відео сюди"}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              MP4 · MOV · MKV · AVI · WebM — up to 500 MB
+              або натисни щоб вибрати файл — MP4, MOV, AVI, MKV до 500MB
             </Typography>
           </Box>
         )}
       </Box>
 
-      {error && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          {error}
-        </Alert>
+      {/* Clear button outside drop zone */}
+      {file && (
+        <Box display="flex" justifyContent="flex-end" mt={0.5}>
+          <IconButton size="small" onClick={(e) => { e.stopPropagation(); onFile(null); }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
       )}
     </Box>
   );

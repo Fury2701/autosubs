@@ -1,5 +1,11 @@
 const BASE = "/api";
 
+export interface JobSettings {
+  language: string;   // "auto" | "en" | "uk" | ...
+  animation: string;  // "karaoke" | "pop" | "fade"
+  color: string;      // "#RRGGBB"
+}
+
 export interface JobResponse {
   id: string;
   status: "pending" | "uploading" | "transcribing" | "rendering" | "done" | "failed";
@@ -9,9 +15,15 @@ export interface JobResponse {
   filename?: string;
 }
 
-export async function createJob(file: File): Promise<{ job_id: string }> {
+export async function createJob(
+  file: File,
+  settings: JobSettings,
+): Promise<{ job_id: string }> {
   const form = new FormData();
   form.append("file", file);
+  form.append("language", settings.language === "auto" ? "" : settings.language);
+  form.append("animation", settings.animation);
+  form.append("color", settings.color);
 
   const res = await fetch(`${BASE}/jobs`, { method: "POST", body: form });
   if (!res.ok) {
