@@ -47,10 +47,19 @@ def _input_path(job_id: str) -> Optional[Path]:
     return Path(matches[0]) if matches else None
 
 
-def _run_ffmpeg(inp: Path, ass: Path, out: Path) -> None:
+def _run_ffmpeg(
+    inp: Path, ass: Path, out: Path,
+    trim_start: float = 0.0,
+    trim_end: Optional[float] = None,
+) -> None:
     ass_esc = str(ass).replace("\\", "/").replace(":", "\\:")
-    cmd = [
-        "ffmpeg", "-y", "-i", str(inp),
+    cmd = ["ffmpeg", "-y"]
+    if trim_start > 0:
+        cmd += ["-ss", str(trim_start)]
+    cmd += ["-i", str(inp)]
+    if trim_end is not None:
+        cmd += ["-t", str(trim_end - trim_start)]
+    cmd += [
         "-vf", f"ass={ass_esc}",
         "-c:v", "libx264", "-preset", "fast", "-crf", "20",
         "-c:a", "aac", "-b:a", "192k",
@@ -105,19 +114,28 @@ async def _do_rerender(job_id: str, inp: Path, data: SubtitleData) -> None:
     try:
         _set(job, JobStatus.RENDERING, 55)
 
-        # Load saved word_map so karaoke still uses precise timestamps
         wmap: Dict[int, List] = {}
         wp = _wordmap_path(job_id)
         if wp.exists():
             raw = json.loads(wp.read_text(encoding="utf-8"))
             wmap = {int(k): v for k, v in raw.items()}
 
+        # Shift subtitle timestamps when trimming
+        import copy
+        render_data = copy.deepcopy(data)
+        if render_data.trim_start > 0:
+            for chunk in render_data.chunks:
+                chunk.start = max(0.0, chunk.start - render_data.trim_start)
+                chunk.end   = max(0.0, chunk.end   - render_data.trim_start)
+            render_data.chunks = [c for c in render_data.chunks if c.end > 0]
+
         ass = job_dir / "subtitles.ass"
-        create_ass_from_data(data, str(ass), word_map=wmap)
+        create_ass_from_data(render_data, str(ass), word_map=wmap)
 
         _chunks_path(job_id).write_text(data.model_dump_json(indent=2), encoding="utf-8")
 
-        _run_ffmpeg(inp, ass, job_dir / "output.mp4")
+        _run_ffmpeg(inp, ass, job_dir / "output.mp4",
+                    trim_start=data.trim_start, trim_end=data.trim_end)
         _set(job, JobStatus.DONE, 100)
 
     except Exception as exc:
@@ -200,6 +218,19 @@ async def rerender(
         raise HTTPException(500, "Original video not found")
     background_tasks.add_task(_do_rerender, job_id, inp, data)
     return {"job_id": job_id}
+
+
+@router.get("/{job_id}/preview")
+async def preview_video(job_id: str):
+    """Stream the original (unprocessed) video for the editor preview."""
+    _get_or_404(job_id)
+    inp = _input_path(job_id)
+    if not inp:
+        raise HTTPException(404, "Original video not found")
+    mt = {".mp4": "video/mp4", ".mov": "video/quicktime",
+          ".mkv": "video/x-matroska", ".avi": "video/x-msvideo",
+          ".m4v": "video/mp4", ".webm": "video/webm"}.get(inp.suffix.lower(), "video/mp4")
+    return FileResponse(str(inp), media_type=mt)
 
 
 @router.get("/{job_id}/download")

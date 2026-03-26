@@ -13,9 +13,11 @@ import {
 import DownloadIcon from "@mui/icons-material/Download";
 import ReplayIcon from "@mui/icons-material/Replay";
 import EditIcon from "@mui/icons-material/Edit";
+import VideoSettingsIcon from "@mui/icons-material/VideoSettings";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import { pollJob, getSubtitles, JobResponse, SubtitleData } from "../api/client";
 import SubtitleEditor from "./SubtitleEditor";
+import VideoEditor from "./VideoEditor";
 
 interface Props {
   jobId: string;
@@ -36,6 +38,7 @@ const POLL_INTERVAL = 2500;
 export default function JobTracker({ jobId, onReset }: Props) {
   const [job, setJob] = useState<JobResponse | null>(null);
   const [editing, setEditing] = useState(false);
+  const [videoEditing, setVideoEditing] = useState(false);
   const [subtitles, setSubtitles] = useState<SubtitleData | null>(null);
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -98,6 +101,17 @@ export default function JobTracker({ jobId, onReset }: Props) {
         <LinearProgress />
         <Typography mt={2} color="text.secondary">Connecting…</Typography>
       </Box>
+    );
+  }
+
+  if (videoEditing && subtitles) {
+    return (
+      <VideoEditor
+        jobId={jobId}
+        initial={subtitles}
+        onBack={() => setVideoEditing(false)}
+        onRerenderStarted={handleRerenderStarted}
+      />
     );
   }
 
@@ -188,13 +202,26 @@ export default function JobTracker({ jobId, onReset }: Props) {
                 Завантажити
               </Button>
               <Button
+                variant="contained"
+                size="large"
+                startIcon={loadingEdit ? <CircularProgress size={16} /> : <VideoSettingsIcon />}
+                onClick={async () => {
+                  await handleEditClick();
+                  setVideoEditing(true);
+                }}
+                disabled={loadingEdit}
+                sx={{ background: "linear-gradient(135deg,#7C5CFC,#00C9FF)" }}
+              >
+                Відкрити редактор
+              </Button>
+              <Button
                 variant="outlined"
                 size="large"
-                startIcon={loadingEdit ? <CircularProgress size={16} /> : <EditIcon />}
+                startIcon={<EditIcon />}
                 onClick={handleEditClick}
                 disabled={loadingEdit}
               >
-                Редагувати субтитри
+                Тільки текст
               </Button>
             </>
           )}

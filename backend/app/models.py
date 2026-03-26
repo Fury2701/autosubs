@@ -44,5 +44,7 @@ class SubtitleChunk(BaseModel):
 class SubtitleData(BaseModel):
     chunks: List[SubtitleChunk]
     color: str = "#FFFFFF"
-    color2: Optional[str] = None      # gradient end colour (global)
+    color2: Optional[str] = None
     global_animation: str = "pop"
+    trim_start: float = 0.0           # seconds; 0 = no trim
+    trim_end: Optional[float] = None  # None = no trim

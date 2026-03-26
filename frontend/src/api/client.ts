@@ -31,6 +31,8 @@ export interface SubtitleData {
   color: string;
   color2: string | null;
   global_animation: string;
+  trim_start: number;
+  trim_end: number | null;
 }
 
 export async function createJob(file: File, settings: JobSettings): Promise<{ job_id: string }> {
@@ -75,4 +77,8 @@ export async function rerender(jobId: string, data: SubtitleData): Promise<void>
 
 export function downloadUrl(jobId: string): string {
   return `${BASE}/jobs/${jobId}/download`;
+}
+
+export function previewUrl(jobId: string): string {
+  return `${BASE}/jobs/${jobId}/preview`;
 }
