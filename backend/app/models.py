@@ -40,6 +40,7 @@ class SubtitleChunk(BaseModel):
     color: Optional[str] = None       # None → global
     color2: Optional[str] = None      # None → global (gradient end)
     effect: Optional[str] = None      # None → global
+    font_size: Optional[int] = None   # None → inherit global
 
 
 class SubtitleData(BaseModel):
@@ -48,6 +49,7 @@ class SubtitleData(BaseModel):
     color2: Optional[str] = None
     global_animation: str = "pop"
     global_effect: Optional[str] = None
+    font_size: int = 76                  # global ASS font size (points)
     trim_start: float = 0.0           # seconds; 0 = no trim
     trim_end: Optional[float] = None  # None = no trim
     sub_x: float = 50.0   # % of PlayResX (horizontal center)

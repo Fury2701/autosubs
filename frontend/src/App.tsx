@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS: JobSettings = {
   color: "#FFFFFF",
   color2: null,
   effect: null,
+  font_size: 76,
 };
 
 export default function App() {

@@ -10,7 +10,7 @@ import MovieFilterIcon from "@mui/icons-material/MovieFilter";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PaletteIcon from "@mui/icons-material/Palette";
 import { SubtitleData, SubtitleChunk, rerender } from "../api/client";
-import { ANIMATIONS, EFFECTS } from "./SettingsPanel";
+import { ANIMATIONS, EFFECTS, PRESETS } from "./SettingsPanel";
 
 interface Props {
   jobId: string;
@@ -109,7 +109,7 @@ export default function SubtitleEditor({
     const ns = prev ? prev.end + 0.1 : 0;
     const ne = next ? Math.min(next.start - 0.1, ns + 1) : ns + 1;
     const nc: SubtitleChunk = { id: Date.now(), text: "New subtitle", start: ns, end: ne,
-                                animation: null, color: null, color2: null, effect: null };
+                                animation: null, color: null, color2: null, effect: null, font_size: null };
     const chunks = [...data.chunks];
     chunks.splice(idx + 1, 0, nc);
     setData((d) => ({ ...d, chunks }));
@@ -158,6 +158,38 @@ export default function SubtitleEditor({
               <MenuItem key={ef.value} value={ef.value}>{ef.emoji} {ef.label}</MenuItem>
             ))}
           </Select>
+
+          {/* Font size */}
+          <Box display="flex" alignItems="center" gap={1}>
+            <Typography variant="caption" color="text.secondary">🔡</Typography>
+            <input
+              type="range" min={28} max={160} step={4}
+              value={data.font_size || 76}
+              onChange={(e) => setData((d) => ({ ...d, font_size: Number(e.target.value) }))}
+              style={{ width: 100 }}
+            />
+            <Typography variant="caption" fontFamily="monospace">{data.font_size || 76}pt</Typography>
+          </Box>
+
+          {/* Presets */}
+          <Box>
+            <Typography variant="caption" color="text.secondary" mb={0.5} display="block">
+              🎨 Пресет:
+            </Typography>
+            <Box display="flex" gap={0.8} flexWrap="wrap">
+              {PRESETS.map((p) => (
+                <Tooltip key={p.name} title={p.desc} arrow>
+                  <Button size="small" variant="outlined"
+                    onClick={() => setData((d) => p.apply(d))}
+                    sx={{ py: 0.5, px: 1, fontSize: "0.6rem", fontWeight: 700, minWidth: 50,
+                          borderRadius: 2, flexDirection: "column", gap: 0.1, lineHeight: 1.2 }}>
+                    <span style={{ fontSize: 16 }}>{p.emoji}</span>
+                    {p.name}
+                  </Button>
+                </Tooltip>
+              ))}
+            </Box>
+          </Box>
 
           {/* Global colors */}
           <Box display="flex" alignItems="center" gap={1}>

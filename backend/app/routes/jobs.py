@@ -81,6 +81,7 @@ async def _process(
     language: Optional[str], animation: str,
     color: str, color2: Optional[str],
     effect: Optional[str] = None,
+    font_size: int = 76,
 ) -> None:
     job = _get_or_404(job_id)
     try:
@@ -95,6 +96,8 @@ async def _process(
 
         if effect:
             subtitle_data.global_effect = effect
+
+        subtitle_data.font_size = font_size
 
         _chunks_path(job_id).write_text(
             subtitle_data.model_dump_json(indent=2), encoding="utf-8"
@@ -165,6 +168,7 @@ async def create_job(
     color: str = Form("#FFFFFF"),
     color2: Optional[str] = Form(None),
     effect: Optional[str] = Form(None),
+    font_size: int = Form(76),
 ):
     suffix = Path(file.filename).suffix.lower() if file.filename else ".mp4"
     if suffix not in {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}:
@@ -177,6 +181,7 @@ async def create_job(
         color2 = None
     if effect and effect not in VALID_EFFECTS:
         effect = None
+    font_size = max(20, min(200, font_size))
 
     job_id  = str(uuid.uuid4())
     job_dir = STORAGE_DIR / job_id
@@ -195,7 +200,7 @@ async def create_job(
 
     job = Job(id=job_id, filename=file.filename)
     _set(job, JobStatus.PENDING, 5)
-    background_tasks.add_task(_process, job_id, inp, job_dir, language, animation, color, color2, effect)
+    background_tasks.add_task(_process, job_id, inp, job_dir, language, animation, color, color2, effect, font_size)
     return {"job_id": job_id}
 
 

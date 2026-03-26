@@ -6,6 +6,7 @@ export interface JobSettings {
   color: string;
   color2: string | null;
   effect: string | null;
+  font_size: number;
 }
 
 export interface JobResponse {
@@ -26,6 +27,7 @@ export interface SubtitleChunk {
   color: string | null;
   color2: string | null;
   effect: string | null;
+  font_size: number | null;
 }
 
 export interface SubtitleData {
@@ -34,6 +36,7 @@ export interface SubtitleData {
   color2: string | null;
   global_animation: string;
   global_effect: string | null;
+  font_size: number;
   trim_start: number;
   trim_end: number | null;
   sub_x: number;
@@ -48,6 +51,7 @@ export async function createJob(file: File, settings: JobSettings): Promise<{ jo
   form.append("color", settings.color);
   if (settings.color2) form.append("color2", settings.color2);
   if (settings.effect) form.append("effect", settings.effect);
+  form.append("font_size", String(settings.font_size));
 
   const res = await fetch(`${BASE}/jobs`, { method: "POST", body: form });
   if (!res.ok) {

@@ -161,7 +161,7 @@ def words_to_subtitle_data(
 # ASS header
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _header(primary: str, secondary: str) -> str:
+def _header(primary: str, secondary: str, font_size: int = 76) -> str:
     # DejaVu Sans Bold ships with fonts-dejavu-extra (Debian) and supports
     # Cyrillic, Latin, Greek and many other scripts out of the box.
     return (
@@ -172,7 +172,7 @@ def _header(primary: str, secondary: str) -> str:
         "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
         "Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        f"Style: Default,DejaVu Sans Bold,76,{primary},{secondary},"
+        f"Style: Default,DejaVu Sans Bold,{font_size},{primary},{secondary},"
         "&H00000000,&HAA000000,-1,0,0,0,100,100,2,0,1,5,2,2,80,80,90,1\n"
         "Style: Word,Barlow Condensed,88,&H00FFFFFF,&H000000FF,&H00000000,&HA0000000,-1,0,0,0,100,100,3,0,1,3,2,5,10,10,30,1\n\n"
         "[Events]\n"
@@ -380,10 +380,12 @@ def _render_chunk(
     sub_x: float = 50.0,
     sub_y: float = 87.5,
     word_color_start: int = 0,
+    global_font_size: int = 76,
 ) -> str:
     anim   = chunk.animation or global_animation
     c1     = chunk.color  or global_color
     c2     = chunk.color2 or global_color2
+    fs     = chunk.font_size or global_font_size
     s, e   = chunk.start, chunk.end
     words  = word_map.get(chunk.id, [])
 
@@ -395,6 +397,9 @@ def _render_chunk(
         body = _gradient_text(chunk.text, c1, c2)
     else:
         body = f"{{\\c{hex_to_ass(c1)}&}}{chunk.text}"
+
+    if chunk.font_size and chunk.font_size != global_font_size:
+        body = f"{{\\fs{fs}}}" + body
 
     if anim == "karaoke":
         if words:
@@ -452,7 +457,7 @@ def create_ass_from_data(
     # utf-8-sig writes UTF-8 BOM — libass uses it to auto-detect encoding,
     # which is required for correct Cyrillic / non-Latin rendering.
     with open(output_path, "w", encoding="utf-8-sig") as fh:
-        fh.write(_header(primary, secondary))
+        fh.write(_header(primary, secondary, data.font_size))
         word_color_idx = 0
         for chunk in sorted(data.chunks, key=lambda c: c.start):
             fh.write(_render_chunk(
@@ -460,6 +465,7 @@ def create_ass_from_data(
                 data.color2, wmap, data.global_effect,
                 data.sub_x, data.sub_y,
                 word_color_idx,
+                global_font_size=data.font_size,
             ))
             # advance word color index for word_pop continuity across chunks
             anim = chunk.animation or data.global_animation

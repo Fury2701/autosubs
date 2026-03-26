@@ -12,8 +12,9 @@ import {
   Paper,
   Switch,
   FormControlLabel,
+  Slider,
 } from "@mui/material";
-import { JobSettings } from "../api/client";
+import { JobSettings, SubtitleData, SubtitleChunk } from "../api/client";
 
 interface Props {
   settings: JobSettings;
@@ -57,6 +58,97 @@ export const EFFECTS = [
   { value: "shake",   label: "SHAKE",   emoji: "📳", desc: "Тремтіння" },
   { value: "shadow",  label: "SHADOW",  emoji: "🌑", desc: "Велика тінь" },
   { value: "outline", label: "OUTLINE", emoji: "◻️", desc: "Контур, що пульсує" },
+];
+
+// ── Animation presets ─────────────────────────────────────────────────────────
+const PRESET_ANIMS_ENERGY   = ["pop","bounce","zoom_in","flip","glitch","spin"] as const;
+const PRESET_ANIMS_CHILL    = ["fade","slide_up","cinema","fade","drop_in"] as const;
+const PRESET_ANIMS_CINEMATIC = ["cinema","fade"] as const;
+const PRESET_ANIMS_PARTY    = ["pop","bounce","spin","flip","glitch","zoom_in","drop_in"] as const;
+const PRESET_EFFECTS_PARTY  = ["glow", null, "shake", null, "outline", null, "glow"] as const;
+const PRESET_COLORS_ENERGY  = ["#F5E642","#E8593C","#42B883","#4287F5","#C084FC","#F472B6"];
+const PRESET_COLORS_PARTY   = ["#F5E642","#F542B3","#42B883","#4287F5","#FFB347","#C084FC","#E8593C"];
+
+export interface Preset {
+  name: string; emoji: string; desc: string;
+  apply: (d: SubtitleData) => SubtitleData;
+}
+
+export const PRESETS: Preset[] = [
+  {
+    name: "VIRAL", emoji: "🔥", desc: "Слово за словом · барвисто · по центру",
+    apply: (d) => ({
+      ...d,
+      global_animation: "word_pop", color: "#F5E642", color2: null,
+      global_effect: null, font_size: 88, sub_y: 50,
+      chunks: d.chunks.map(c => ({ ...c, animation: null as SubtitleChunk["animation"], color: null, color2: null, effect: null, font_size: null })),
+    }),
+  },
+  {
+    name: "ENERGY", emoji: "⚡", desc: "Різні анімації · яскраві кольори",
+    apply: (d) => ({
+      ...d,
+      global_animation: "pop", color: "#FFFFFF", color2: null,
+      global_effect: null, font_size: 82, sub_y: 87.5,
+      chunks: d.chunks.map((c, i) => ({
+        ...c,
+        animation: PRESET_ANIMS_ENERGY[i % PRESET_ANIMS_ENERGY.length] as SubtitleChunk["animation"],
+        color: PRESET_COLORS_ENERGY[i % PRESET_COLORS_ENERGY.length],
+        color2: null, effect: null, font_size: null,
+      })),
+    }),
+  },
+  {
+    name: "NEON", emoji: "💡", desc: "Неоновий градієнт · glow ефект",
+    apply: (d) => ({
+      ...d,
+      global_animation: "glow", color: "#00FFFF", color2: "#F542B3",
+      global_effect: "glow", font_size: 80, sub_y: 87.5,
+      chunks: d.chunks.map(c => ({ ...c, animation: null as SubtitleChunk["animation"], color: null, color2: null, effect: null, font_size: null })),
+    }),
+  },
+  {
+    name: "CHILL", emoji: "🌊", desc: "Плавні переходи · синій градієнт",
+    apply: (d) => ({
+      ...d,
+      global_animation: "fade", color: "#FFFFFF", color2: "#00C9FF",
+      global_effect: null, font_size: 76, sub_y: 87.5,
+      chunks: d.chunks.map((c, i) => ({
+        ...c,
+        animation: PRESET_ANIMS_CHILL[i % PRESET_ANIMS_CHILL.length] as SubtitleChunk["animation"],
+        color: null, color2: null, effect: null, font_size: null,
+      })),
+    }),
+  },
+  {
+    name: "CINEMA", emoji: "🎬", desc: "Кіношний стиль · велика тінь",
+    apply: (d) => ({
+      ...d,
+      global_animation: "cinema", color: "#FFFFFF", color2: null,
+      global_effect: "shadow", font_size: 92, sub_y: 87.5,
+      chunks: d.chunks.map((c, i) => ({
+        ...c,
+        animation: PRESET_ANIMS_CINEMATIC[i % PRESET_ANIMS_CINEMATIC.length] as SubtitleChunk["animation"],
+        color: null, color2: null, effect: null, font_size: null,
+      })),
+    }),
+  },
+  {
+    name: "PARTY", emoji: "🎉", desc: "Всі анімації по черзі · мікс кольорів",
+    apply: (d) => ({
+      ...d,
+      global_animation: "pop", color: "#FFFFFF", color2: null,
+      global_effect: null, font_size: 82, sub_y: 87.5,
+      chunks: d.chunks.map((c, i) => ({
+        ...c,
+        animation: PRESET_ANIMS_PARTY[i % PRESET_ANIMS_PARTY.length] as SubtitleChunk["animation"],
+        color: PRESET_COLORS_PARTY[i % PRESET_COLORS_PARTY.length],
+        color2: null,
+        effect: PRESET_EFFECTS_PARTY[i % PRESET_EFFECTS_PARTY.length] ?? null,
+        font_size: null,
+      })),
+    }),
+  },
 ];
 
 const COLOR_PRESETS = [
@@ -190,6 +282,31 @@ export default function SettingsPanel({ settings, onChange }: Props) {
             </Tooltip>
           ))}
         </Box>
+      </Box>
+
+      {/* Font size */}
+      <Box>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.5}>
+          <Typography variant="caption" color="text.secondary">🔡 Розмір шрифту</Typography>
+          <Typography variant="caption" color="text.secondary" fontFamily="monospace">
+            {settings.font_size}pt
+          </Typography>
+        </Box>
+        <Slider
+          size="small"
+          min={28}
+          max={160}
+          step={4}
+          value={settings.font_size}
+          onChange={(_, v) => set({ font_size: v as number })}
+          marks={[
+            { value: 48, label: "S" },
+            { value: 76, label: "M" },
+            { value: 112, label: "L" },
+            { value: 148, label: "XL" },
+          ]}
+          sx={{ mx: 0.5 }}
+        />
       </Box>
 
       {/* Effects */}

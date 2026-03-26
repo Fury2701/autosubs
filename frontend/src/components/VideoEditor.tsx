@@ -13,7 +13,7 @@ import PauseIcon from "@mui/icons-material/Pause";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import { SubtitleData, SubtitleChunk, rerender, downloadUrl, previewUrl } from "../api/client";
-import { ANIMATIONS, EFFECTS } from "./SettingsPanel";
+import { ANIMATIONS, EFFECTS, PRESETS } from "./SettingsPanel";
 
 interface Props {
   jobId: string;
@@ -82,10 +82,10 @@ const EFFECT_STYLE: Record<string, React.CSSProperties> = {
 };
 
 // ── Subtitle overlay ─────────────────────────────────────────────────────────
-function SubOverlay({ chunks, t, color, color2, globalAnimation, globalEffect, subX, subY, onPositionChange, videoContainerRef }: {
+function SubOverlay({ chunks, t, color, color2, globalAnimation, globalEffect, subX, subY, subFontSize, onPositionChange, videoContainerRef }: {
   chunks: SubtitleChunk[]; t: number; color: string; color2: string | null;
   globalAnimation: string; globalEffect: string | null;
-  subX: number; subY: number;
+  subX: number; subY: number; subFontSize: number;
   onPositionChange?: (x: number, y: number) => void;
   videoContainerRef?: RefObject<HTMLDivElement>;
 }) {
@@ -96,6 +96,10 @@ function SubOverlay({ chunks, t, color, color2, globalAnimation, globalEffect, s
   const isWordPop = (active.animation || globalAnimation) === "word_pop";
   let c1 = active.color || color;
   let c2: string | null = active.color2 || color2;
+
+  const chunkFontSize = active.font_size || subFontSize;
+  const cssMaxPx = Math.round(chunkFontSize * 0.37);
+  const cssFontSize = `clamp(${Math.max(10, Math.round(cssMaxPx * 0.5))}px, ${(cssMaxPx / 28 * 2.8).toFixed(1)}vw, ${cssMaxPx}px)`;
 
   if (isWordPop) {
     c1 = WORD_POP_PALETTE[activeIdx % WORD_POP_PALETTE.length];
@@ -155,7 +159,7 @@ function SubOverlay({ chunks, t, color, color2, globalAnimation, globalEffect, s
         fontFamily: isWordPop
           ? '"Barlow Condensed","Arial Narrow",Arial,sans-serif'
           : '"DejaVu Sans Bold","Arial Black",Arial,sans-serif',
-        fontSize: isWordPop ? "clamp(18px,4.5vw,44px)" : "clamp(14px,2.8vw,28px)",
+        fontSize: cssFontSize,
         fontWeight: 900, lineHeight: 1.3,
         letterSpacing: isWordPop ? "0.05em" : "normal",
         textTransform: isWordPop ? "uppercase" : "none",
@@ -323,6 +327,7 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
     trim_end: initial.trim_end ?? null,
     sub_x: initial.sub_x ?? 50,
     sub_y: initial.sub_y ?? 87.5,
+    font_size: initial.font_size ?? 76,
   });
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -401,7 +406,7 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
     const t = currentTime;
     setData(d => ({
       ...d,
-      chunks: [...d.chunks, { id, text: "New subtitle", start: t, end: t + 2, animation: null, color: null, color2: null, effect: null }],
+      chunks: [...d.chunks, { id, text: "New subtitle", start: t, end: t + 2, animation: null, color: null, color2: null, effect: null, font_size: null }],
     }));
     setSelectedId(id);
   };
@@ -466,6 +471,7 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
               globalAnimation={data.global_animation}
               globalEffect={data.global_effect ?? null}
               subX={data.sub_x ?? 50} subY={data.sub_y ?? 87.5}
+              subFontSize={data.font_size || 76}
               videoContainerRef={videoContainerRef}
               onPositionChange={(x, y) => setData(d => ({ ...d, sub_x: x, sub_y: y }))}
             />
@@ -536,6 +542,26 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
                     defaultValue={fmt(selected.end)} key={`e-${selected.id}`}
                     onBlur={(e) => updChunk(selected.id, { end: parseT(e.target.value) })}
                     inputProps={{ style: { fontFamily: "monospace" } }} />
+                </Box>
+
+                {/* Per-chunk font size */}
+                <Box display="flex" alignItems="center" gap={1.5}>
+                  <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+                    🔡 Розмір:
+                  </Typography>
+                  <input
+                    type="range" min={28} max={160} step={4}
+                    value={selected.font_size || data.font_size || 76}
+                    onChange={(e) => updChunk(selected.id, { font_size: Number(e.target.value) === (data.font_size || 76) ? null : Number(e.target.value) })}
+                    style={{ flex: 1 }}
+                  />
+                  <Typography variant="caption" fontFamily="monospace" sx={{ minWidth: 36 }}>
+                    {selected.font_size || data.font_size || 76}pt
+                  </Typography>
+                  {selected.font_size && (
+                    <Typography variant="caption" sx={{ cursor: "pointer", opacity: 0.5 }}
+                      onClick={() => updChunk(selected.id, { font_size: null })}>✕</Typography>
+                  )}
                 </Box>
 
                 <Select size="small" fullWidth value={selected.animation ?? ""}
@@ -627,6 +653,30 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
                 <Typography variant="caption" color="text.secondary" textAlign="left">
                   Глобальні налаштування:
                 </Typography>
+
+                {/* Presets */}
+                <Box>
+                  <Typography variant="caption" color="text.secondary" mb={1} display="block">
+                    🎨 Пресети — застосувати готовий стиль
+                  </Typography>
+                  <Box display="flex" gap={1} flexWrap="wrap">
+                    {PRESETS.map(p => (
+                      <Tooltip key={p.name} title={p.desc} arrow>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => setData(d => p.apply(d))}
+                          sx={{ flexDirection: "column", py: 0.8, px: 1.5, gap: 0.2, minWidth: 64,
+                                borderRadius: 2, fontSize: "0.6rem", fontWeight: 700, lineHeight: 1.2 }}
+                        >
+                          <span style={{ fontSize: 20 }}>{p.emoji}</span>
+                          {p.name}
+                        </Button>
+                      </Tooltip>
+                    ))}
+                  </Box>
+                </Box>
+
                 <Select size="small" fullWidth value={data.global_animation}
                   onChange={(e) => setData(d => ({ ...d, global_animation: e.target.value }))}>
                   {ANIMATIONS.map(a => (
@@ -641,6 +691,23 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
                     <MenuItem key={ef.value} value={ef.value}>{ef.emoji} {ef.label}</MenuItem>
                   ))}
                 </Select>
+
+                {/* Font size */}
+                <Box display="flex" alignItems="center" gap={1.5}>
+                  <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+                    🔡 Розмір:
+                  </Typography>
+                  <input
+                    type="range" min={28} max={160} step={4}
+                    value={data.font_size || 76}
+                    onChange={(e) => setData(d => ({ ...d, font_size: Number(e.target.value) }))}
+                    style={{ flex: 1 }}
+                  />
+                  <Typography variant="caption" fontFamily="monospace" sx={{ minWidth: 36 }}>
+                    {data.font_size || 76}pt
+                  </Typography>
+                </Box>
+
                 <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
                   <Box component="label" sx={{ width: 32, height: 32, borderRadius: "50%",
                     background: data.color, border: "2px solid #555", cursor: "pointer", flexShrink: 0 }}>
