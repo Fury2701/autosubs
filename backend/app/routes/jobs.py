@@ -2,7 +2,7 @@ import shutil
 import subprocess
 import uuid
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
@@ -11,10 +11,9 @@ from app.config import STORAGE_DIR, MAX_UPLOAD_MB
 from app.models import Job, JobStatus, STATUS_LABELS
 from app.services.assemblyai import transcribe
 from app.services.subtitle import create_ass
+import app.store as store
 
 router = APIRouter(prefix="/api/jobs")
-
-_jobs: Dict[str, Job] = {}
 
 VALID_ANIMATIONS = {"karaoke", "pop", "fade"}
 
@@ -23,10 +22,11 @@ def _set(job: Job, status: JobStatus, progress: int) -> None:
     job.status = status
     job.progress = progress
     job.label = STATUS_LABELS[status]
+    store.save(job)
 
 
 def _get_or_404(job_id: str) -> Job:
-    job = _jobs.get(job_id)
+    job = store.load(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
@@ -44,7 +44,7 @@ async def _process(
     animation: str,
     color: str,
 ) -> None:
-    job = _jobs[job_id]
+    job = _get_or_404(job_id)
     try:
         _set(job, JobStatus.TRANSCRIBING, 20)
         words = await transcribe(str(input_path), language)
@@ -70,9 +70,11 @@ async def _process(
         _set(job, JobStatus.DONE, 100)
 
     except Exception as exc:
+        job = _get_or_404(job_id)
         job.status = JobStatus.FAILED
         job.label = STATUS_LABELS[JobStatus.FAILED]
         job.error = str(exc)
+        store.save(job)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -93,7 +95,6 @@ async def create_job(
 
     if animation not in VALID_ANIMATIONS:
         animation = "karaoke"
-
     if not color.startswith("#") or len(color) != 7:
         color = "#FFFFFF"
 
@@ -119,7 +120,6 @@ async def create_job(
 
     job = Job(id=job_id, filename=file.filename)
     _set(job, JobStatus.PENDING, 5)
-    _jobs[job_id] = job
 
     background_tasks.add_task(
         _process, job_id, input_path, job_dir, language, animation, color
