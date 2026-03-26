@@ -4,28 +4,28 @@ from pydantic import BaseModel
 
 
 class JobStatus(str, Enum):
-    PENDING = "pending"
-    UPLOADING = "uploading"
+    PENDING      = "pending"
+    UPLOADING    = "uploading"
     TRANSCRIBING = "transcribing"
-    RENDERING = "rendering"
-    DONE = "done"
-    FAILED = "failed"
+    RENDERING    = "rendering"
+    DONE         = "done"
+    FAILED       = "failed"
 
 
 STATUS_LABELS = {
-    JobStatus.PENDING: "Waiting in queue...",
-    JobStatus.UPLOADING: "Uploading video...",
+    JobStatus.PENDING:      "Waiting in queue...",
+    JobStatus.UPLOADING:    "Uploading video...",
     JobStatus.TRANSCRIBING: "Transcribing speech with AssemblyAI...",
-    JobStatus.RENDERING: "Rendering animated subtitles with FFmpeg...",
-    JobStatus.DONE: "Done!",
-    JobStatus.FAILED: "Failed",
+    JobStatus.RENDERING:    "Rendering animated subtitles with FFmpeg...",
+    JobStatus.DONE:         "Done!",
+    JobStatus.FAILED:       "Failed",
 }
 
 
 class Job(BaseModel):
     id: str
     status: JobStatus = JobStatus.PENDING
-    progress: int = 0          # 0-100
+    progress: int = 0
     label: str = STATUS_LABELS[JobStatus.PENDING]
     error: Optional[str] = None
     filename: Optional[str] = None
@@ -34,12 +34,15 @@ class Job(BaseModel):
 class SubtitleChunk(BaseModel):
     id: int
     text: str
-    start: float               # seconds
-    end: float                 # seconds
-    animation: Optional[str] = None   # None → use global
+    start: float
+    end: float
+    animation: Optional[str] = None   # None → global
+    color: Optional[str] = None       # None → global
+    color2: Optional[str] = None      # None → global (gradient end)
 
 
 class SubtitleData(BaseModel):
     chunks: List[SubtitleChunk]
     color: str = "#FFFFFF"
-    global_animation: str = "karaoke"
+    color2: Optional[str] = None      # gradient end colour (global)
+    global_animation: str = "pop"

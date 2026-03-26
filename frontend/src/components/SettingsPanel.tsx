@@ -10,6 +10,8 @@ import {
   InputLabel,
   Tooltip,
   Paper,
+  Switch,
+  FormControlLabel,
 } from "@mui/material";
 import { JobSettings } from "../api/client";
 
@@ -33,37 +35,96 @@ const LANGUAGES = [
   { code: "zh",   label: "🇨🇳 Китайська" },
 ];
 
-const ANIMATIONS = [
-  { value: "pop",     label: "POP",     desc: "Пружний стрибок", emoji: "🎯" },
-  { value: "karaoke", label: "KARAOKE", desc: "Підсвічування слів", emoji: "🎤" },
-  { value: "fade",    label: "FADE",    desc: "Плавне з'явлення", emoji: "✨" },
+export const ANIMATIONS = [
+  { value: "pop",        label: "POP",        emoji: "🎯", desc: "Пружний стрибок" },
+  { value: "karaoke",    label: "KARAOKE",    emoji: "🎤", desc: "Підсвічування слів" },
+  { value: "fade",       label: "FADE",       emoji: "✨", desc: "Плавне з'явлення" },
+  { value: "typewriter", label: "TYPE",       emoji: "⌨️", desc: "Друкарська машинка" },
+  { value: "slide_up",   label: "SLIDE",      emoji: "⬆️", desc: "Виїзд знизу" },
+  { value: "bounce",     label: "BOUNCE",     emoji: "🏀", desc: "Гумовий відскок" },
+  { value: "glow",       label: "GLOW",       emoji: "💡", desc: "Неоновий розмив" },
+  { value: "zoom_in",    label: "ZOOM",       emoji: "🔍", desc: "Zoom від великого" },
 ];
 
 const COLOR_PRESETS = [
-  { hex: "#FFFFFF", label: "Білий" },
-  { hex: "#FFFF00", label: "Жовтий" },
-  { hex: "#00FFFF", label: "Блакитний" },
-  { hex: "#FF6B6B", label: "Червоний" },
-  { hex: "#69FF94", label: "Зелений" },
-  { hex: "#FFB347", label: "Помаранчевий" },
+  "#FFFFFF", "#FFFF00", "#00FFFF", "#FF6B6B",
+  "#69FF94", "#FFB347", "#C084FC", "#F472B6",
 ];
 
+function ColorSwatch({
+  color,
+  selected,
+  onClick,
+  tooltip,
+}: {
+  color: string;
+  selected: boolean;
+  onClick: () => void;
+  tooltip: string;
+}) {
+  return (
+    <Tooltip title={tooltip} arrow>
+      <Box
+        onClick={onClick}
+        sx={{
+          width: 28,
+          height: 28,
+          borderRadius: "50%",
+          background: color,
+          cursor: "pointer",
+          border: selected ? "3px solid #7C5CFC" : "3px solid transparent",
+          outline: selected ? "2px solid #7C5CFC44" : "none",
+          transition: "transform 0.15s",
+          flexShrink: 0,
+          "&:hover": { transform: "scale(1.2)" },
+        }}
+      />
+    </Tooltip>
+  );
+}
+
+function ColorPickerRaw({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <Tooltip title="Свій колір" arrow>
+      <Box
+        component="label"
+        sx={{
+          width: 28,
+          height: 28,
+          borderRadius: "50%",
+          background: "conic-gradient(red,yellow,lime,cyan,blue,magenta,red)",
+          cursor: "pointer",
+          flexShrink: 0,
+          transition: "transform 0.15s",
+          "&:hover": { transform: "scale(1.2)" },
+        }}
+      >
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ opacity: 0, width: 0, height: 0, position: "absolute" }}
+        />
+      </Box>
+    </Tooltip>
+  );
+}
+
 export default function SettingsPanel({ settings, onChange }: Props) {
-  const set = (patch: Partial<JobSettings>) =>
-    onChange({ ...settings, ...patch });
+  const set = (patch: Partial<JobSettings>) => onChange({ ...settings, ...patch });
+  const hasGradient = !!settings.color2;
 
   return (
     <Paper
       elevation={0}
-      sx={{
-        p: 3,
-        border: "1px solid",
-        borderColor: "divider",
-        borderRadius: 3,
-        display: "flex",
-        flexDirection: "column",
-        gap: 3,
-      }}
+      sx={{ p: 3, border: "1px solid", borderColor: "divider", borderRadius: 3,
+            display: "flex", flexDirection: "column", gap: 3 }}
     >
       {/* Language */}
       <FormControl size="small" fullWidth>
@@ -74,9 +135,7 @@ export default function SettingsPanel({ settings, onChange }: Props) {
           onChange={(e) => set({ language: e.target.value })}
         >
           {LANGUAGES.map((l) => (
-            <MenuItem key={l.code} value={l.code}>
-              {l.label}
-            </MenuItem>
+            <MenuItem key={l.code} value={l.code}>{l.label}</MenuItem>
           ))}
         </Select>
       </FormControl>
@@ -86,23 +145,24 @@ export default function SettingsPanel({ settings, onChange }: Props) {
         <Typography variant="caption" color="text.secondary" mb={1} display="block">
           ✨ Анімація
         </Typography>
-        <ToggleButtonGroup
-          exclusive
-          fullWidth
-          value={settings.animation}
-          onChange={(_, v) => v && set({ animation: v })}
-          size="small"
-        >
+        <Box display="flex" flexWrap="wrap" gap={0.8}>
           {ANIMATIONS.map((a) => (
             <Tooltip key={a.value} title={a.desc} arrow>
               <ToggleButton
                 value={a.value}
+                selected={settings.animation === a.value}
+                onChange={() => set({ animation: a.value })}
+                size="small"
                 sx={{
                   flexDirection: "column",
-                  py: 1.5,
-                  gap: 0.5,
+                  px: 1.5, py: 1,
+                  gap: 0.3,
                   fontWeight: 600,
-                  fontSize: "0.7rem",
+                  fontSize: "0.65rem",
+                  lineHeight: 1.2,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: "10px !important",
                   "&.Mui-selected": {
                     background: "linear-gradient(135deg, #7C5CFC33, #00E5FF22)",
                     borderColor: "primary.main",
@@ -110,87 +170,108 @@ export default function SettingsPanel({ settings, onChange }: Props) {
                   },
                 }}
               >
-                <span style={{ fontSize: 20 }}>{a.emoji}</span>
+                <span style={{ fontSize: 18 }}>{a.emoji}</span>
                 {a.label}
               </ToggleButton>
             </Tooltip>
           ))}
-        </ToggleButtonGroup>
+        </Box>
       </Box>
 
       {/* Color */}
       <Box>
-        <Typography variant="caption" color="text.secondary" mb={1} display="block">
-          🎨 Колір тексту
-        </Typography>
-        <Box display="flex" gap={1} alignItems="center" flexWrap="wrap">
-          {COLOR_PRESETS.map((c) => (
-            <Tooltip key={c.hex} title={c.label} arrow>
-              <Box
-                onClick={() => set({ color: c.hex })}
-                sx={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: "50%",
-                  background: c.hex,
-                  cursor: "pointer",
-                  border: settings.color === c.hex
-                    ? "3px solid #7C5CFC"
-                    : "3px solid transparent",
-                  outline: settings.color === c.hex
-                    ? "2px solid #7C5CFC44"
-                    : "none",
-                  transition: "transform 0.15s",
-                  "&:hover": { transform: "scale(1.2)" },
-                }}
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+          <Typography variant="caption" color="text.secondary">🎨 Колір тексту</Typography>
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={hasGradient}
+                onChange={(e) => set({ color2: e.target.checked ? "#FF6B6B" : null })}
               />
-            </Tooltip>
-          ))}
-
-          {/* Custom colour picker */}
-          <Tooltip title="Свій колір" arrow>
-            <Box
-              component="label"
-              sx={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                background:
-                  "conic-gradient(red,yellow,lime,cyan,blue,magenta,red)",
-                cursor: "pointer",
-                border: !COLOR_PRESETS.find((c) => c.hex === settings.color)
-                  ? "3px solid #7C5CFC"
-                  : "3px solid transparent",
-                transition: "transform 0.15s",
-                "&:hover": { transform: "scale(1.2)" },
-              }}
-            >
-              <input
-                type="color"
-                value={settings.color}
-                onChange={(e) => set({ color: e.target.value })}
-                style={{ opacity: 0, width: 0, height: 0, position: "absolute" }}
-              />
-            </Box>
-          </Tooltip>
-
-          <Box
-            sx={{
-              ml: 1,
-              px: 1.5,
-              py: 0.5,
-              borderRadius: 2,
-              background: settings.color,
-              color: "#000",
-              fontFamily: "monospace",
-              fontSize: "0.75rem",
-              fontWeight: 700,
-              userSelect: "none",
-            }}
-          >
-            {settings.color.toUpperCase()}
-          </Box>
+            }
+            label={<Typography variant="caption" color="text.secondary">Градієнт</Typography>}
+            sx={{ m: 0 }}
+          />
         </Box>
+
+        <Box display="flex" gap={2} alignItems="flex-start">
+          {/* Color 1 */}
+          <Box>
+            {hasGradient && (
+              <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
+                Від
+              </Typography>
+            )}
+            <Box display="flex" gap={0.8} flexWrap="wrap" alignItems="center">
+              {COLOR_PRESETS.map((c) => (
+                <ColorSwatch
+                  key={c}
+                  color={c}
+                  selected={settings.color === c}
+                  onClick={() => set({ color: c })}
+                  tooltip={c}
+                />
+              ))}
+              <ColorPickerRaw value={settings.color} onChange={(c) => set({ color: c })} />
+              <Box
+                sx={{
+                  px: 1, py: 0.3, borderRadius: 1,
+                  background: settings.color,
+                  fontFamily: "monospace", fontSize: "0.7rem",
+                  fontWeight: 700, color: "#000",
+                  userSelect: "none",
+                }}
+              >
+                {settings.color.toUpperCase()}
+              </Box>
+            </Box>
+          </Box>
+
+          {/* Color 2 — gradient end */}
+          {hasGradient && settings.color2 && (
+            <Box>
+              <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
+                До
+              </Typography>
+              <Box display="flex" gap={0.8} flexWrap="wrap" alignItems="center">
+                {COLOR_PRESETS.map((c) => (
+                  <ColorSwatch
+                    key={c}
+                    color={c}
+                    selected={settings.color2 === c}
+                    onClick={() => set({ color2: c })}
+                    tooltip={c}
+                  />
+                ))}
+                <ColorPickerRaw value={settings.color2} onChange={(c) => set({ color2: c })} />
+                <Box
+                  sx={{
+                    background: `linear-gradient(90deg, ${settings.color}, ${settings.color2})`,
+                    px: 1, py: 0.3, borderRadius: 1,
+                    fontFamily: "monospace", fontSize: "0.7rem",
+                    fontWeight: 700, color: "#000",
+                    userSelect: "none",
+                  }}
+                >
+                  {settings.color2.toUpperCase()}
+                </Box>
+              </Box>
+            </Box>
+          )}
+        </Box>
+
+        {/* Gradient preview */}
+        {hasGradient && settings.color2 && (
+          <Box
+            mt={1.5}
+            sx={{
+              height: 6,
+              borderRadius: 3,
+              background: `linear-gradient(90deg, ${settings.color}, ${settings.color2})`,
+            }}
+          />
+        )}
       </Box>
     </Paper>
   );

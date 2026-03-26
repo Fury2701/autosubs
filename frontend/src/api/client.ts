@@ -4,6 +4,7 @@ export interface JobSettings {
   language: string;
   animation: string;
   color: string;
+  color2: string | null;
 }
 
 export interface JobResponse {
@@ -21,11 +22,14 @@ export interface SubtitleChunk {
   start: number;
   end: number;
   animation: string | null;
+  color: string | null;
+  color2: string | null;
 }
 
 export interface SubtitleData {
   chunks: SubtitleChunk[];
   color: string;
+  color2: string | null;
   global_animation: string;
 }
 
@@ -35,6 +39,8 @@ export async function createJob(file: File, settings: JobSettings): Promise<{ jo
   form.append("language", settings.language === "auto" ? "" : settings.language);
   form.append("animation", settings.animation);
   form.append("color", settings.color);
+  if (settings.color2) form.append("color2", settings.color2);
+
   const res = await fetch(`${BASE}/jobs`, { method: "POST", body: form });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
