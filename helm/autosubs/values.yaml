@@ -1,0 +1,52 @@
+backend:
+  image:
+    repository: ghcr.io/fury2701/autosubs-backend
+    tag: latest
+    pullPolicy: Always
+  replicas: 1
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+  env:
+    STORAGE_DIR: /data/autosubs
+    MAX_UPLOAD_MB: "500"
+  # assemblyAiApiKey is injected from the Secret
+  storage:
+    size: 20Gi
+    storageClass: ""   # use cluster default
+
+frontend:
+  image:
+    repository: ghcr.io/fury2701/autosubs-frontend
+    tag: latest
+    pullPolicy: Always
+  replicas: 1
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "128Mi"
+
+ingress:
+  enabled: true
+  className: nginx
+  host: autosubs.example.com
+  tls: []
+  # tls:
+  #   - secretName: autosubs-tls
+  #     hosts:
+  #       - autosubs.example.com
+
+# Create a Secret with your real key:
+#   kubectl create secret generic autosubs-secret \
+#     --from-literal=assemblyai-api-key=YOUR_KEY \
+#     -n autosubs
+secret:
+  name: autosubs-secret
+  assemblyAiKeyRef: assemblyai-api-key

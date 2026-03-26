@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autosubs-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: autosubs-backend
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  selector:
+    matchLabels:
+      app: autosubs-backend
+  template:
+    metadata:
+      labels:
+        app: autosubs-backend
+    spec:
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          ports:
+            - containerPort: 8000
+          env:
+            - name: ASSEMBLYAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secret.name }}
+                  key: {{ .Values.secret.assemblyAiKeyRef }}
+            - name: STORAGE_DIR
+              value: {{ .Values.backend.env.STORAGE_DIR | quote }}
+            - name: MAX_UPLOAD_MB
+              value: {{ .Values.backend.env.MAX_UPLOAD_MB | quote }}
+          volumeMounts:
+            - name: storage
+              mountPath: {{ .Values.backend.env.STORAGE_DIR }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: autosubs-storage
