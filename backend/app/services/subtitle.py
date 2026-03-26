@@ -152,6 +152,8 @@ def words_to_subtitle_data(
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _header(primary: str, secondary: str) -> str:
+    # DejaVu Sans Bold ships with fonts-dejavu-extra (Debian) and supports
+    # Cyrillic, Latin, Greek and many other scripts out of the box.
     return (
         "[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\n"
         "ScaledBorderAndShadow: yes\n\n"
@@ -160,7 +162,7 @@ def _header(primary: str, secondary: str) -> str:
         "OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
         "Alignment, MarginL, MarginR, MarginV, Encoding\n"
-        f"Style: Default,Arial Rounded MT Bold,76,{primary},{secondary},"
+        f"Style: Default,DejaVu Sans Bold,76,{primary},{secondary},"
         "&H00000000,&HAA000000,-1,0,0,0,100,100,2,0,1,5,2,2,80,80,90,1\n\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
@@ -291,7 +293,9 @@ def create_ass_from_data(
     secondary = "&H00FFFF00" if data.color.upper() in ("#FFFFFF", "#FFFF00") else "&H0000FFFF"
     wmap = word_map or {}
 
-    with open(output_path, "w", encoding="utf-8") as fh:
+    # utf-8-sig writes UTF-8 BOM — libass uses it to auto-detect encoding,
+    # which is required for correct Cyrillic / non-Latin rendering.
+    with open(output_path, "w", encoding="utf-8-sig") as fh:
         fh.write(_header(primary, secondary))
         for chunk in sorted(data.chunks, key=lambda c: c.start):
             fh.write(_render_chunk(chunk, data.global_animation, data.color,

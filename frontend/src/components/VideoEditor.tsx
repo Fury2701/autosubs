@@ -37,33 +37,66 @@ function parseT(v: string) {
   return (parseFloat(m) || 0) * 60 + (parseFloat(s) || 0);
 }
 
+// ── CSS animation keyframes injected once ────────────────────────────────────
+const ANIM_STYLE = `
+@keyframes sub-pop      { from { transform: scale(1.18); opacity:.6 } to { transform: scale(1); opacity:1 } }
+@keyframes sub-fade     { from { opacity: 0 }  to { opacity: 1 } }
+@keyframes sub-slide    { from { transform: translateY(18px); opacity:0 } to { transform: translateY(0); opacity:1 } }
+@keyframes sub-bounce   { 0%{transform:scaleY(1.35)} 40%{transform:scaleY(.82)} 70%{transform:scaleY(1.12)} 90%{transform:scaleY(.97)} 100%{transform:scaleY(1)} }
+@keyframes sub-glow     { from { filter:blur(10px) brightness(2.5); opacity:.4 } to { filter:blur(0) brightness(1); opacity:1 } }
+@keyframes sub-zoom     { from { transform: scale(2.4); opacity:0 } to { transform: scale(1); opacity:1 } }
+@keyframes sub-type     { from { clip-path: inset(0 100% 0 0) } to { clip-path: inset(0 0% 0 0) } }
+@keyframes sub-karaoke  { from { opacity: 0 } to { opacity: 1 } }
+`;
+
+const ANIM_MAP: Record<string, string> = {
+  pop:        "sub-pop 0.22s cubic-bezier(.34,1.56,.64,1) both",
+  fade:       "sub-fade 0.28s ease both",
+  slide_up:   "sub-slide 0.28s ease both",
+  bounce:     "sub-bounce 0.45s ease both",
+  glow:       "sub-glow 0.45s ease both",
+  zoom_in:    "sub-zoom 0.22s ease both",
+  typewriter: "sub-type 0.7s steps(24) both",
+  karaoke:    "sub-karaoke 0.15s ease both",
+};
+
 // ── Subtitle overlay ─────────────────────────────────────────────────────────
-function SubOverlay({ chunks, t, color, color2 }: {
+function SubOverlay({ chunks, t, color, color2, globalAnimation }: {
   chunks: SubtitleChunk[]; t: number; color: string; color2: string | null;
+  globalAnimation: string;
 }) {
   const active = chunks.find(c => t >= c.start && t <= c.end);
   if (!active) return null;
-  const c1 = active.color || color;
-  const c2 = active.color2 || color2;
+
+  const c1   = active.color  || color;
+  const c2   = active.color2 || color2;
+  const anim = ANIM_MAP[active.animation || globalAnimation] || ANIM_MAP.pop;
+
   return (
+    // Outer — fixed position anchor (never animates)
     <Box sx={{
       position: "absolute", bottom: "8%", left: "50%",
       transform: "translateX(-50%)",
       textAlign: "center", pointerEvents: "none",
-      fontFamily: '"Arial Rounded MT Bold","Arial Black",Arial,sans-serif',
-      fontSize: "clamp(14px,2.8vw,28px)", fontWeight: 900, lineHeight: 1.3,
       maxWidth: "85%", px: 1,
-      ...(c2 ? {
-        background: `linear-gradient(90deg,${c1},${c2})`,
-        WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-        backgroundClip: "text",
-        filter: "drop-shadow(1px 1px 3px rgba(0,0,0,0.95))",
-      } : {
-        color: c1,
-        textShadow: "2px 2px 0 #000,-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,0 3px 8px rgba(0,0,0,0.85)",
-      }),
     }}>
-      {active.text}
+      {/* Inner — CSS animation plays here, keyed by chunk id to retrigger */}
+      <Box key={active.id} sx={{
+        fontFamily: '"DejaVu Sans Bold","Arial Black",Arial,sans-serif',
+        fontSize: "clamp(14px,2.8vw,28px)", fontWeight: 900, lineHeight: 1.3,
+        animation: anim,
+        ...(c2 ? {
+          background: `linear-gradient(90deg,${c1},${c2})`,
+          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+          backgroundClip: "text",
+          filter: "drop-shadow(1px 1px 3px rgba(0,0,0,0.95))",
+        } : {
+          color: c1,
+          textShadow: "2px 2px 0 #000,-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,0 3px 8px rgba(0,0,0,0.85)",
+        }),
+      }}>
+        {active.text}
+      </Box>
     </Box>
   );
 }
@@ -237,7 +270,13 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
     const v = videoRef.current;
     if (!v) return;
     const onTime = () => setCurrentTime(v.currentTime);
-    const onMeta = () => { setDuration(v.duration || 1); setData(d => ({ ...d, trim_end: d.trim_end ?? v.duration })); };
+    const onMeta = () => {
+      const d = v.duration;
+      if (d && isFinite(d) && d > 0) {
+        setDuration(d);
+        setData(prev => ({ ...prev, trim_end: prev.trim_end ?? d }));
+      }
+    };
     const onPlay  = () => setPlaying(true);
     const onPause = () => setPlaying(false);
     v.addEventListener("timeupdate", onTime);
@@ -255,7 +294,16 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
   const togglePlay = () => {
     const v = videoRef.current;
     if (!v) return;
-    playing ? v.pause() : v.play();
+    if (playing) {
+      v.pause();
+    } else {
+      v.play().catch((err) => {
+        console.warn("play() rejected:", err);
+        // Muted autoplay is always allowed — unmute after first play
+        v.muted = true;
+        v.play().then(() => { v.muted = false; }).catch(console.error);
+      });
+    }
   };
 
   const seek = (t: number) => {
@@ -327,13 +375,18 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
         {/* Video player */}
         <Box sx={{ flex: "0 0 auto", width: { xs: "100%", md: "60%" } }}>
           <Box sx={{ position: "relative", bgcolor: "#000", borderRadius: 2, overflow: "hidden" }}>
+          {/* inject animation keyframes once */}
+          <style>{ANIM_STYLE}</style>
             <video
               ref={videoRef}
               src={previewUrl(jobId)}
+              preload="auto"
+              playsInline
               style={{ width: "100%", display: "block", maxHeight: "50vh" }}
             />
             <SubOverlay chunks={data.chunks} t={currentTime}
-              color={data.color} color2={data.color2} />
+              color={data.color} color2={data.color2}
+              globalAnimation={data.global_animation} />
           </Box>
 
           {/* Playback controls */}
