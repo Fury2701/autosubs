@@ -1,22 +1,27 @@
+import glob
 import shutil
 import subprocess
 import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Body, Form, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 
 from app.config import STORAGE_DIR, MAX_UPLOAD_MB
-from app.models import Job, JobStatus, STATUS_LABELS
+from app.models import Job, JobStatus, STATUS_LABELS, SubtitleData
 from app.services.assemblyai import transcribe
-from app.services.subtitle import create_ass
+from app.services.subtitle import create_ass, create_ass_from_data
 import app.store as store
 
 router = APIRouter(prefix="/api/jobs")
 
 VALID_ANIMATIONS = {"karaoke", "pop", "fade"}
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ──────────────────────────────────────────────────────────────────────────────
 
 def _set(job: Job, status: JobStatus, progress: int) -> None:
     job.status = status
@@ -30,6 +35,30 @@ def _get_or_404(job_id: str) -> Job:
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+def _chunks_path(job_id: str) -> Path:
+    return STORAGE_DIR / job_id / "chunks.json"
+
+
+def _input_path(job_id: str) -> Optional[Path]:
+    matches = glob.glob(str(STORAGE_DIR / job_id / "input.*"))
+    return Path(matches[0]) if matches else None
+
+
+def _run_ffmpeg(input_path: Path, ass_path: Path, output_path: Path) -> None:
+    ass_escaped = str(ass_path).replace("\\", "/").replace(":", "\\:")
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(input_path),
+        "-vf", f"ass={ass_escaped}",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+        "-c:a", "aac", "-b:a", "192k",
+        str(output_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, timeout=600)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.decode(errors="replace")[-2000:])
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -51,22 +80,14 @@ async def _process(
 
         _set(job, JobStatus.RENDERING, 55)
         ass_path = job_dir / "subtitles.ass"
-        create_ass(words, str(ass_path), animation=animation, color=color)
+        subtitle_data = create_ass(words, str(ass_path), animation=animation, color=color)
 
-        output_path = job_dir / "output.mp4"
-        ass_escaped = str(ass_path).replace("\\", "/").replace(":", "\\:")
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", str(input_path),
-            "-vf", f"ass={ass_escaped}",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "20",
-            "-c:a", "aac", "-b:a", "192k",
-            str(output_path),
-        ]
-        result = subprocess.run(cmd, capture_output=True, timeout=600)
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.decode(errors="replace")[-2000:])
+        # Persist chunks so the editor can load them
+        _chunks_path(job_id).write_text(
+            subtitle_data.model_dump_json(indent=2), encoding="utf-8"
+        )
 
+        _run_ffmpeg(input_path, ass_path, job_dir / "output.mp4")
         _set(job, JobStatus.DONE, 100)
 
     except Exception as exc:
@@ -92,7 +113,6 @@ async def create_job(
     suffix = Path(file.filename).suffix.lower() if file.filename else ".mp4"
     if suffix not in {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}:
         raise HTTPException(400, "Unsupported video format")
-
     if animation not in VALID_ANIMATIONS:
         animation = "karaoke"
     if not color.startswith("#") or len(color) != 7:
@@ -102,35 +122,76 @@ async def create_job(
     job_dir = STORAGE_DIR / job_id
     job_dir.mkdir(parents=True)
 
-    input_path = job_dir / f"input{suffix}"
+    inp = job_dir / f"input{suffix}"
     limit = MAX_UPLOAD_MB * 1024 * 1024
     total = 0
-
-    with open(input_path, "wb") as fh:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk:
-                break
+    with open(inp, "wb") as fh:
+        while chunk := await file.read(1024 * 1024):
             total += len(chunk)
             if total > limit:
-                fh.close()
                 shutil.rmtree(job_dir, ignore_errors=True)
-                raise HTTPException(413, f"File exceeds {MAX_UPLOAD_MB} MB limit")
+                raise HTTPException(413, f"File exceeds {MAX_UPLOAD_MB} MB")
             fh.write(chunk)
 
     job = Job(id=job_id, filename=file.filename)
     _set(job, JobStatus.PENDING, 5)
-
-    background_tasks.add_task(
-        _process, job_id, input_path, job_dir, language, animation, color
-    )
-
+    background_tasks.add_task(_process, job_id, inp, job_dir, language, animation, color)
     return {"job_id": job_id}
 
 
 @router.get("/{job_id}")
 async def get_job(job_id: str):
     return _get_or_404(job_id)
+
+
+@router.get("/{job_id}/subtitles")
+async def get_subtitles(job_id: str):
+    _get_or_404(job_id)
+    p = _chunks_path(job_id)
+    if not p.exists():
+        raise HTTPException(404, "Subtitles not ready yet")
+    return SubtitleData.model_validate_json(p.read_text(encoding="utf-8"))
+
+
+@router.post("/{job_id}/rerender", status_code=202)
+async def rerender(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    data: SubtitleData = Body(...),
+):
+    job = _get_or_404(job_id)
+    if job.status not in (JobStatus.DONE, JobStatus.FAILED):
+        raise HTTPException(400, "Job must be done before re-rendering")
+
+    inp = _input_path(job_id)
+    if not inp:
+        raise HTTPException(500, "Original video not found")
+
+    background_tasks.add_task(_do_rerender, job_id, inp, data)
+    return {"job_id": job_id}
+
+
+async def _do_rerender(job_id: str, input_path: Path, data: SubtitleData) -> None:
+    job = _get_or_404(job_id)
+    job_dir = STORAGE_DIR / job_id
+    try:
+        _set(job, JobStatus.RENDERING, 55)
+
+        ass_path = job_dir / "subtitles.ass"
+        create_ass_from_data(data, str(ass_path))
+
+        # Save updated chunks
+        _chunks_path(job_id).write_text(data.model_dump_json(indent=2), encoding="utf-8")
+
+        _run_ffmpeg(input_path, ass_path, job_dir / "output.mp4")
+        _set(job, JobStatus.DONE, 100)
+
+    except Exception as exc:
+        job = _get_or_404(job_id)
+        job.status = JobStatus.FAILED
+        job.label = STATUS_LABELS[JobStatus.FAILED]
+        job.error = str(exc)
+        store.save(job)
 
 
 @router.get("/{job_id}/download")

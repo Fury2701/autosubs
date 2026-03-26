@@ -8,11 +8,14 @@ import {
   Chip,
   Paper,
   Fade,
+  CircularProgress,
 } from "@mui/material";
 import DownloadIcon from "@mui/icons-material/Download";
 import ReplayIcon from "@mui/icons-material/Replay";
+import EditIcon from "@mui/icons-material/Edit";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import { pollJob, downloadUrl, JobResponse } from "../api/client";
+import { pollJob, getSubtitles, JobResponse, SubtitleData } from "../api/client";
+import SubtitleEditor from "./SubtitleEditor";
 
 interface Props {
   jobId: string;
@@ -32,9 +35,13 @@ const POLL_INTERVAL = 2500;
 
 export default function JobTracker({ jobId, onReset }: Props) {
   const [job, setJob] = useState<JobResponse | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [subtitles, setSubtitles] = useState<SubtitleData | null>(null);
+  const [loadingEdit, setLoadingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
+  const startPolling = () => {
     let cancelled = false;
 
     const poll = async () => {
@@ -47,28 +54,61 @@ export default function JobTracker({ jobId, onReset }: Props) {
           }
         }
       } catch {
-        if (!cancelled) {
-          timerRef.current = setTimeout(poll, POLL_INTERVAL * 2);
-        }
+        if (!cancelled) timerRef.current = setTimeout(poll, POLL_INTERVAL * 2);
       }
     };
 
     poll();
-
     return () => {
       cancelled = true;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
+  };
+
+  useEffect(() => {
+    const cleanup = startPolling();
+    return cleanup;
   }, [jobId]);
+
+  const handleEditClick = async () => {
+    setEditError(null);
+    setLoadingEdit(true);
+    try {
+      const data = await getSubtitles(jobId);
+      setSubtitles(data);
+      setEditing(true);
+    } catch (e: unknown) {
+      setEditError(e instanceof Error ? e.message : "Failed to load subtitles");
+    } finally {
+      setLoadingEdit(false);
+    }
+  };
+
+  const handleRerenderStarted = () => {
+    setEditing(false);
+    setSubtitles(null);
+    // restart polling
+    if (timerRef.current) clearTimeout(timerRef.current);
+    startPolling();
+  };
 
   if (!job) {
     return (
       <Box mt={4}>
         <LinearProgress />
-        <Typography mt={2} color="text.secondary">
-          Connecting…
-        </Typography>
+        <Typography mt={2} color="text.secondary">Connecting…</Typography>
       </Box>
+    );
+  }
+
+  if (editing && subtitles) {
+    return (
+      <SubtitleEditor
+        jobId={jobId}
+        initial={subtitles}
+        onBack={() => setEditing(false)}
+        onRerenderStarted={handleRerenderStarted}
+      />
     );
   }
 
@@ -83,15 +123,10 @@ export default function JobTracker({ jobId, onReset }: Props) {
         sx={{
           p: 5,
           border: "1px solid",
-          borderColor: isDone
-            ? "success.main"
-            : isFailed
-            ? "error.main"
-            : "divider",
+          borderColor: isDone ? "success.main" : isFailed ? "error.main" : "divider",
           borderRadius: 4,
         }}
       >
-        {/* Status badge */}
         <Box display="flex" alignItems="center" gap={1.5} mb={3}>
           <Typography fontSize={28}>{STEP_ICONS[job.status] ?? "⏳"}</Typography>
           <Chip
@@ -107,23 +142,16 @@ export default function JobTracker({ jobId, onReset }: Props) {
           )}
         </Box>
 
-        {/* Label */}
-        <Typography variant="h6" fontWeight={600} mb={2}>
-          {job.label}
-        </Typography>
+        <Typography variant="h6" fontWeight={600} mb={2}>{job.label}</Typography>
 
-        {/* Progress bar */}
         <LinearProgress
           variant="determinate"
           value={job.progress}
           color={isDone ? "success" : isFailed ? "error" : "primary"}
           sx={{ height: 8, borderRadius: 4, mb: 1 }}
         />
-        <Typography variant="caption" color="text.secondary">
-          {job.progress}%
-        </Typography>
+        <Typography variant="caption" color="text.secondary">{job.progress}%</Typography>
 
-        {/* Steps timeline */}
         {isRunning && (
           <Box mt={3} display="flex" gap={1} flexWrap="wrap">
             {(["transcribing", "rendering"] as const).map((s) => (
@@ -139,34 +167,45 @@ export default function JobTracker({ jobId, onReset }: Props) {
           </Box>
         )}
 
-        {/* Error */}
         {isFailed && job.error && (
-          <Alert severity="error" sx={{ mt: 3 }}>
-            {job.error}
-          </Alert>
+          <Alert severity="error" sx={{ mt: 3 }}>{job.error}</Alert>
         )}
 
-        {/* Actions */}
-        <Box display="flex" gap={2} mt={4}>
+        {editError && (
+          <Alert severity="error" sx={{ mt: 2 }}>{editError}</Alert>
+        )}
+
+        <Box display="flex" gap={2} mt={4} flexWrap="wrap">
           {isDone && (
-            <Button
-              variant="contained"
-              size="large"
-              startIcon={<DownloadIcon />}
-              href={downloadUrl(jobId)}
-              download
-            >
-              Download Video
-            </Button>
+            <>
+              <Button
+                variant="contained"
+                size="large"
+                startIcon={<DownloadIcon />}
+                href={`/api/jobs/${jobId}/download`}
+                download
+              >
+                Завантажити
+              </Button>
+              <Button
+                variant="outlined"
+                size="large"
+                startIcon={loadingEdit ? <CircularProgress size={16} /> : <EditIcon />}
+                onClick={handleEditClick}
+                disabled={loadingEdit}
+              >
+                Редагувати субтитри
+              </Button>
+            </>
           )}
           <Button
-            variant={isDone ? "outlined" : "text"}
+            variant={isDone ? "text" : "outlined"}
             size="large"
             startIcon={<ReplayIcon />}
             onClick={onReset}
             color={isFailed ? "error" : "inherit"}
           >
-            {isFailed ? "Try again" : "New video"}
+            {isFailed ? "Спробувати знову" : "Нове відео"}
           </Button>
         </Box>
 
@@ -174,7 +213,7 @@ export default function JobTracker({ jobId, onReset }: Props) {
           <Box display="flex" alignItems="center" gap={1} mt={3}>
             <CheckCircleIcon color="success" fontSize="small" />
             <Typography variant="body2" color="success.main">
-              Subtitles burned in — karaoke-style word highlighting included.
+              Субтитри готові — можна завантажити або відредагувати перед завантаженням.
             </Typography>
           </Box>
         )}

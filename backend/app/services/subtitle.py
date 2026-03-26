@@ -1,12 +1,12 @@
 """
-Generates ASS subtitle files with multiple animation styles.
+Generates ASS subtitle files.
 
-Styles:
-  karaoke — word-by-word colour sweep (\kf fill tag)
-  pop     — chunk bounces in with elastic scale, then fades out
-  fade    — simple fade-in / fade-out, no word highlight
+Two entry points:
+  create_ass()             — from raw word timestamps (first render)
+  create_ass_from_chunks() — from edited SubtitleChunk list (re-render)
 """
-from typing import List, Dict
+from typing import List, Dict, Optional
+from app.models import SubtitleChunk, SubtitleData
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -22,18 +22,15 @@ def _fmt_time(seconds: float) -> str:
 
 
 def hex_to_ass(hex_color: str) -> str:
-    """#RRGGBB → &H00BBGGRR  (ASS stores colours in ABGR order)"""
     h = hex_color.lstrip("#")
     if len(h) != 6:
         return "&H00FFFFFF"
-    r = int(h[0:2], 16)
-    g = int(h[2:4], 16)
-    b = int(h[4:6], 16)
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
     return f"&H00{b:02X}{g:02X}{r:02X}"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Word grouping
+# Word grouping (used only on first render)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _group(
@@ -57,8 +54,28 @@ def _group(
     return chunks
 
 
+def words_to_subtitle_data(
+    words: List[Dict],
+    animation: str,
+    color: str,
+) -> SubtitleData:
+    """Convert flat word list → SubtitleData (saved to disk for editing)."""
+    raw_chunks = _group(words)
+    chunks = [
+        SubtitleChunk(
+            id=i,
+            text=" ".join(w["text"] for w in chunk),
+            start=chunk[0]["start"],
+            end=chunk[-1]["end"],
+            animation=None,  # uses global
+        )
+        for i, chunk in enumerate(raw_chunks)
+    ]
+    return SubtitleData(chunks=chunks, color=color, global_animation=animation)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
-# ASS header builder
+# ASS header
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _header(primary: str, secondary: str) -> str:
@@ -79,78 +96,61 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Dialogue builders per style
+# Dialogue builders
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _dialogue_karaoke(chunk: List[Dict]) -> str:
-    """Word-by-word colour sweep with \kf tags."""
-    start, end = chunk[0]["start"], chunk[-1]["end"]
-    parts = ["{\\fad(120,120)}"]
-    prev_end = start
-    for i, w in enumerate(chunk):
-        gap_cs = max(0, round((w["start"] - prev_end) * 100))
-        if gap_cs:
-            parts.append(f"{{\\k{gap_cs}}}")
-        dur_cs = max(1, round((w["end"] - w["start"]) * 100))
-        parts.append(f"{{\\kf{dur_cs}}}{w['text']}")
-        prev_end = w["end"]
-        if i < len(chunk) - 1:
-            parts.append(" ")
-    return (
-        f"Dialogue: 0,{_fmt_time(start)},{_fmt_time(end)},"
-        f"Default,,0,0,0,,{''.join(parts)}\n"
-    )
-
-
-def _dialogue_pop(chunk: List[Dict]) -> str:
-    """Elastic scale pop-in, fade out."""
-    start, end = chunk[0]["start"], chunk[-1]["end"]
-    text = " ".join(w["text"] for w in chunk)
-    # bounce: grow to 115% in 100ms → shrink to 100% in next 120ms, then fade out
+def _pop(text: str, start: float, end: float) -> str:
     anim = "{\\fad(0,150)\\t(0,100,\\fscx115\\fscy115)\\t(100,220,\\fscx100\\fscy100)}"
-    return (
-        f"Dialogue: 0,{_fmt_time(start)},{_fmt_time(end)},"
-        f"Default,,0,0,0,,{anim}{text}\n"
-    )
+    return f"Dialogue: 0,{_fmt_time(start)},{_fmt_time(end)},Default,,0,0,0,,{anim}{text}\n"
 
 
-def _dialogue_fade(chunk: List[Dict]) -> str:
-    """Simple smooth fade-in / fade-out."""
-    start, end = chunk[0]["start"], chunk[-1]["end"]
-    text = " ".join(w["text"] for w in chunk)
+def _fade(text: str, start: float, end: float) -> str:
+    return f"Dialogue: 0,{_fmt_time(start)},{_fmt_time(end)},Default,,0,0,0,,{{\\fad(250,250)}}{text}\n"
+
+
+def _karaoke(text: str, start: float, end: float) -> str:
+    """Simple karaoke on a plain-text chunk (no per-word timing after edit)."""
+    dur_cs = max(1, round((end - start) * 100))
     return (
         f"Dialogue: 0,{_fmt_time(start)},{_fmt_time(end)},"
-        f"Default,,0,0,0,,{{\\fad(250,250)}}{text}\n"
+        f"Default,,0,0,0,,{{\\fad(120,120)}}{{\\kf{dur_cs}}}{text}\n"
     )
 
 
 _BUILDERS = {
-    "karaoke": _dialogue_karaoke,
-    "pop": _dialogue_pop,
-    "fade": _dialogue_fade,
+    "pop": _pop,
+    "fade": _fade,
+    "karaoke": _karaoke,
 }
+
+
+def _build_line(chunk: SubtitleChunk, global_animation: str) -> str:
+    anim = chunk.animation or global_animation
+    builder = _BUILDERS.get(anim, _karaoke)
+    return builder(chunk.text, chunk.start, chunk.end)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Public API
 # ──────────────────────────────────────────────────────────────────────────────
+
+def create_ass_from_data(data: SubtitleData, output_path: str) -> None:
+    primary = hex_to_ass(data.color)
+    secondary = "&H00FFFF00" if data.color.upper() in ("#FFFFFF", "#FFFF00") else "&H0000FFFF"
+
+    with open(output_path, "w", encoding="utf-8") as fh:
+        fh.write(_header(primary, secondary))
+        for chunk in sorted(data.chunks, key=lambda c: c.start):
+            fh.write(_build_line(chunk, data.global_animation))
+
 
 def create_ass(
     words: List[Dict],
     output_path: str,
     animation: str = "karaoke",
     color: str = "#FFFFFF",
-) -> None:
-    if not words:
-        raise ValueError("No words to subtitle")
-
-    primary = hex_to_ass(color)
-    # secondary (karaoke highlight) is always cyan-ish unless colour is already cyan
-    secondary = "&H00FFFF00" if color.upper() in ("#FFFFFF", "#FFFF00") else "&H0000FFFF"
-
-    builder = _BUILDERS.get(animation, _dialogue_karaoke)
-    chunks = _group(words)
-
-    with open(output_path, "w", encoding="utf-8") as fh:
-        fh.write(_header(primary, secondary))
-        for chunk in chunks:
-            fh.write(builder(chunk))
+) -> SubtitleData:
+    """First render: words → SubtitleData → ASS file. Returns data for saving."""
+    data = words_to_subtitle_data(words, animation, color)
+    create_ass_from_data(data, output_path)
+    return data

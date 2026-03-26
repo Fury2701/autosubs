@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel
 
 
@@ -29,3 +29,17 @@ class Job(BaseModel):
     label: str = STATUS_LABELS[JobStatus.PENDING]
     error: Optional[str] = None
     filename: Optional[str] = None
+
+
+class SubtitleChunk(BaseModel):
+    id: int
+    text: str
+    start: float               # seconds
+    end: float                 # seconds
+    animation: Optional[str] = None   # None → use global
+
+
+class SubtitleData(BaseModel):
+    chunks: List[SubtitleChunk]
+    color: str = "#FFFFFF"
+    global_animation: str = "karaoke"
