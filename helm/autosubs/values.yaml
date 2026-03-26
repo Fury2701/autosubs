@@ -34,7 +34,7 @@ frontend:
       memory: "128Mi"
 
 ingress:
-  enabled: true
+  enabled: false
   className: traefik
   host: autosubs.10.1.1.4.nip.io
   tls: []

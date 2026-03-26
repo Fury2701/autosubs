@@ -4,8 +4,10 @@ metadata:
   name: autosubs-frontend
   namespace: {{ .Release.Namespace }}
 spec:
+  type: NodePort
   selector:
     app: autosubs-frontend
   ports:
     - port: 80
       targetPort: 80
+      nodePort: 30082
