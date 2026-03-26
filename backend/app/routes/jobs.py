@@ -17,7 +17,7 @@ import app.store as store
 
 router = APIRouter(prefix="/api/jobs")
 
-VALID_ANIMATIONS = {"pop", "karaoke", "fade", "typewriter", "slide_up", "bounce", "glow", "zoom_in", "spin", "drop_in", "cinema", "flip", "glitch"}
+VALID_ANIMATIONS = {"pop", "karaoke", "fade", "typewriter", "slide_up", "bounce", "glow", "zoom_in", "spin", "drop_in", "cinema", "flip", "glitch", "word_pop"}
 VALID_EFFECTS = {"glow", "shake", "shadow", "outline"}
 
 

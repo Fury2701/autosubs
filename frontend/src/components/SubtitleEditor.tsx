@@ -87,7 +87,11 @@ function MiniColorPicker({
 export default function SubtitleEditor({
   jobId, initial, onBack, onRerenderStarted,
 }: Props) {
-  const [data, setData] = useState<SubtitleData>(() => JSON.parse(JSON.stringify(initial)));
+  const [data, setData] = useState<SubtitleData>(() => ({
+    ...JSON.parse(JSON.stringify(initial)),
+    sub_x: initial.sub_x ?? 50,
+    sub_y: initial.sub_y ?? 87.5,
+  }));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showColors, setShowColors] = useState(false);
@@ -183,6 +187,21 @@ export default function SubtitleEditor({
               <Box sx={{ width: 60, height: 6, borderRadius: 3,
                 background: `linear-gradient(90deg, ${data.color}, ${data.color2})` }} />
             )}
+          </Box>
+
+          {/* Position sliders */}
+          <Box display="flex" alignItems="center" gap={1}>
+            <Typography variant="caption" color="text.secondary">X:</Typography>
+            <input type="range" min={5} max={95} value={Math.round(data.sub_x ?? 50)}
+              onChange={(e) => setData((d) => ({ ...d, sub_x: Number(e.target.value) }))}
+              style={{ width: 80 }} />
+            <Typography variant="caption" color="text.secondary">Y:</Typography>
+            <input type="range" min={5} max={95} value={Math.round(data.sub_y ?? 87.5)}
+              onChange={(e) => setData((d) => ({ ...d, sub_y: Number(e.target.value) }))}
+              style={{ width: 80 }} />
+            <Typography variant="caption" color="text.secondary">
+              {Math.round(data.sub_x ?? 50)}%×{Math.round(data.sub_y ?? 87.5)}%
+            </Typography>
           </Box>
 
           {/* Toggle per-chunk colors */}

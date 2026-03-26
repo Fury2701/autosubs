@@ -67,6 +67,16 @@ def _gradient_text(text: str, c1: str, c2: str) -> str:
     return "".join(out)
 
 
+WORD_POP_PALETTE = [
+    "#F5E642",  # yellow
+    "#E8593C",  # orange-red
+    "#42B883",  # green
+    "#4287F5",  # blue
+    "#FFFFFF",  # white
+    "#F542B3",  # pink/magenta
+]
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Time helpers
 # ──────────────────────────────────────────────────────────────────────────────
@@ -78,8 +88,8 @@ def _fmt(s: float) -> str:
     return f"{h}:{m:02d}:{int(s % 60):02d}.{cs:02d}"
 
 
-def _dlg(start: float, end: float, text: str) -> str:
-    return f"Dialogue: 0,{_fmt(start)},{_fmt(end)},Default,,0,0,0,,{text}\n"
+def _dlg(start: float, end: float, text: str, style: str = "Default") -> str:
+    return f"Dialogue: 0,{_fmt(start)},{_fmt(end)},{style},,0,0,0,,{text}\n"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -163,7 +173,8 @@ def _header(primary: str, secondary: str) -> str:
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
         "Alignment, MarginL, MarginR, MarginV, Encoding\n"
         f"Style: Default,DejaVu Sans Bold,76,{primary},{secondary},"
-        "&H00000000,&HAA000000,-1,0,0,0,100,100,2,0,1,5,2,2,80,80,90,1\n\n"
+        "&H00000000,&HAA000000,-1,0,0,0,100,100,2,0,1,5,2,2,80,80,90,1\n"
+        "Style: Word,Barlow Condensed,88,&H00FFFFFF,&H000000FF,&H00000000,&HA0000000,-1,0,0,0,100,100,3,0,1,3,2,5,10,10,30,1\n\n"
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
@@ -282,6 +293,52 @@ def _glitch(body: str, s: float, e: float) -> str:
         "\\t(170,210,\\fscx100)}" + body)
 
 
+def _word_pop(
+    words: List[Dict],
+    s: float, e: float,
+    pos_x: int = 960, pos_y: int = 540,
+    color_start: int = 0,
+) -> str:
+    """Word-by-word karaoke with cyclic color palette and pop animation.
+    Each word appears individually, previous word vanishes immediately.
+    Uses 'Word' style (Barlow Condensed ExtraBold 88px, uppercase).
+    """
+    if not words:
+        # fallback: show whole text as one event
+        col = hex_to_ass(WORD_POP_PALETTE[color_start % len(WORD_POP_PALETTE)])
+        text_body = (
+            f"{{\\an5\\pos({pos_x},{pos_y})\\c{col}&\\fad(80,0)"
+            f"\\t(0,80,\\fscx70\\fscy70)\\t(80,180,\\fscx105\\fscy105)"
+            f"\\t(180,250,\\fscx100\\fscy100)}}"
+        )
+        return _dlg(s, e, text_body, style="Word")
+
+    lines = []
+    for i, w in enumerate(words):
+        col = hex_to_ass(WORD_POP_PALETTE[(color_start + i) % len(WORD_POP_PALETTE)])
+        text = w["text"].upper()
+        text_body = (
+            f"{{\\an5\\pos({pos_x},{pos_y})\\c{col}&\\fad(80,0)"
+            f"\\t(0,80,\\fscx70\\fscy70)\\t(80,180,\\fscx105\\fscy105)"
+            f"\\t(180,250,\\fscx100\\fscy100)}}{text}"
+        )
+        lines.append(_dlg(w["start"], w["end"], text_body, style="Word"))
+    return "".join(lines)
+
+
+def _inject_pos(dialogue: str, x: int, y: int) -> str:
+    """Inject \\an5\\pos(x,y) into the first {…} block of every Dialogue line."""
+    pos = f"\\an5\\pos({x},{y})"
+    lines = []
+    for line in dialogue.splitlines(keepends=True):
+        if line.startswith("Dialogue:") and "{" in line:
+            close = line.find("}")
+            if close != -1:
+                line = line[:close] + pos + line[close:]
+        lines.append(line)
+    return "".join(lines)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Effect modifiers  (combinable on top of any animation)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -320,6 +377,9 @@ def _render_chunk(
     global_color2: Optional[str],
     word_map: Dict[int, List[Dict]],
     global_effect: Optional[str] = None,
+    sub_x: float = 50.0,
+    sub_y: float = 87.5,
+    word_color_start: int = 0,
 ) -> str:
     anim   = chunk.animation or global_animation
     c1     = chunk.color  or global_color
@@ -343,6 +403,12 @@ def _render_chunk(
         dur_cs = max(1, round((e - s) * 100))
         return _dlg(s, e, f"{{\\fad(120,120)}}{{\\kf{dur_cs}}}{body}")
 
+    if anim == "word_pop":
+        pos_x = round(sub_x / 100 * 1920)
+        pos_y = round(sub_y / 100 * 1080)
+        words_for_pop = words if words else [{"text": chunk.text, "start": s, "end": e}]
+        return _word_pop(words_for_pop, s, e, pos_x, pos_y, color_start=word_color_start)
+
     builders = {
         "pop":        _pop,
         "fade":       _fade,
@@ -359,6 +425,11 @@ def _render_chunk(
     }
     build = builders.get(anim, _pop)
     result = build(body, s, e)
+    # Inject custom position when not at default
+    if sub_x != 50.0 or sub_y != 87.5:
+        pos_x = round(sub_x / 100 * 1920)
+        pos_y = round(sub_y / 100 * 1080)
+        result = _inject_pos(result, pos_x, pos_y)
     effect = chunk.effect or global_effect
     if effect:
         result = _apply_effect(result, effect)
@@ -382,9 +453,19 @@ def create_ass_from_data(
     # which is required for correct Cyrillic / non-Latin rendering.
     with open(output_path, "w", encoding="utf-8-sig") as fh:
         fh.write(_header(primary, secondary))
+        word_color_idx = 0
         for chunk in sorted(data.chunks, key=lambda c: c.start):
-            fh.write(_render_chunk(chunk, data.global_animation, data.color,
-                                   data.color2, wmap, data.global_effect))
+            fh.write(_render_chunk(
+                chunk, data.global_animation, data.color,
+                data.color2, wmap, data.global_effect,
+                data.sub_x, data.sub_y,
+                word_color_idx,
+            ))
+            # advance word color index for word_pop continuity across chunks
+            anim = chunk.animation or data.global_animation
+            if anim == "word_pop":
+                words = wmap.get(chunk.id, [])
+                word_color_idx += len(words) if words else len(chunk.text.split())
 
 
 def create_ass(

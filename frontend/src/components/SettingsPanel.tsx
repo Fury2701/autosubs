@@ -37,6 +37,7 @@ const LANGUAGES = [
 
 export const ANIMATIONS = [
   { value: "pop",        label: "POP",        emoji: "🎯", desc: "Пружний стрибок" },
+  { value: "word_pop",   label: "WORDS",      emoji: "🅦",  desc: "Слово за словом з кольорами" },
   { value: "karaoke",    label: "KARAOKE",    emoji: "🎤", desc: "Підсвічування слів" },
   { value: "fade",       label: "FADE",       emoji: "✨", desc: "Плавне з'явлення" },
   { value: "typewriter", label: "TYPE",       emoji: "⌨️", desc: "Друкарська машинка" },

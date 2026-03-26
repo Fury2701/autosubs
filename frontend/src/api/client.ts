@@ -36,6 +36,8 @@ export interface SubtitleData {
   global_effect: string | null;
   trim_start: number;
   trim_end: number | null;
+  sub_x: number;
+  sub_y: number;
 }
 
 export async function createJob(file: File, settings: JobSettings): Promise<{ job_id: string }> {

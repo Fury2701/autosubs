@@ -50,3 +50,5 @@ class SubtitleData(BaseModel):
     global_effect: Optional[str] = None
     trim_start: float = 0.0           # seconds; 0 = no trim
     trim_end: Optional[float] = None  # None = no trim
+    sub_x: float = 50.0   # % of PlayResX (horizontal center)
+    sub_y: float = 87.5   # % of PlayResY (default: near bottom)

@@ -7,6 +7,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-dejavu-core \
     fonts-dejavu-extra \
     fontconfig \
+    wget \
+    && mkdir -p /usr/local/share/fonts/barlow \
+    && wget -q "https://github.com/google/fonts/raw/main/ofl/barlowcondensed/BarlowCondensed-ExtraBold.ttf" \
+       -O /usr/local/share/fonts/barlow/BarlowCondensed-ExtraBold.ttf \
     && fc-cache -fv \
     && rm -rf /var/lib/apt/lists/*
 

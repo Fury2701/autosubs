@@ -1,5 +1,5 @@
 import React, {
-  useCallback, useEffect, useRef, useState,
+  useCallback, useEffect, useRef, useState, RefObject,
 } from "react";
 import {
   Box, Typography, IconButton, Button, TextField, Select,
@@ -37,6 +37,8 @@ function parseT(v: string) {
   return (parseFloat(m) || 0) * 60 + (parseFloat(s) || 0);
 }
 
+const WORD_POP_PALETTE = ["#F5E642","#E8593C","#42B883","#4287F5","#FFFFFF","#F542B3"];
+
 // ── CSS animation keyframes injected once ────────────────────────────────────
 const ANIM_STYLE = `
 @keyframes sub-pop      { from { transform: scale(1.18); opacity:.6 } to { transform: scale(1); opacity:1 } }
@@ -52,6 +54,7 @@ const ANIM_STYLE = `
 @keyframes sub-cinema  { from { transform: scaleX(2.2); opacity:0 } to { transform: scaleX(1); opacity:1 } }
 @keyframes sub-flip    { from { transform: scaleY(0); opacity:0 } to { transform: scaleY(1); opacity:1 } }
 @keyframes sub-glitch  { 0%{transform:scaleX(1.35) skewX(-4deg);opacity:.7} 25%{transform:scaleX(0.75) skewX(4deg)} 50%{transform:scaleX(1.15)} 75%{transform:scaleX(0.93)} 100%{transform:scaleX(1);opacity:1} }
+@keyframes sub-word-pop { 0% { transform: translate(-50%,-50%) scale(0.7); opacity:0 } 60% { transform: translate(-50%,-50%) scale(1.05); opacity:1 } 100% { transform: translate(-50%,-50%) scale(1.0); opacity:1 } }
 `;
 
 const ANIM_MAP: Record<string, string> = {
@@ -68,6 +71,7 @@ const ANIM_MAP: Record<string, string> = {
   cinema:     "sub-cinema 0.32s cubic-bezier(.25,1,.5,1) both",
   flip:       "sub-flip 0.32s cubic-bezier(.34,1.56,.64,1) both",
   glitch:     "sub-glitch 0.25s ease both",
+  word_pop:   "sub-word-pop 0.18s cubic-bezier(0.34,1.56,0.64,1) both",
 };
 
 const EFFECT_STYLE: Record<string, React.CSSProperties> = {
@@ -78,42 +82,87 @@ const EFFECT_STYLE: Record<string, React.CSSProperties> = {
 };
 
 // ── Subtitle overlay ─────────────────────────────────────────────────────────
-function SubOverlay({ chunks, t, color, color2, globalAnimation, globalEffect }: {
+function SubOverlay({ chunks, t, color, color2, globalAnimation, globalEffect, subX, subY, onPositionChange, videoContainerRef }: {
   chunks: SubtitleChunk[]; t: number; color: string; color2: string | null;
   globalAnimation: string; globalEffect: string | null;
+  subX: number; subY: number;
+  onPositionChange?: (x: number, y: number) => void;
+  videoContainerRef?: RefObject<HTMLDivElement>;
 }) {
-  const active = chunks.find(c => t >= c.start && t <= c.end);
+  const activeIdx = chunks.findIndex(c => t >= c.start && t <= c.end);
+  const active = activeIdx >= 0 ? chunks[activeIdx] : null;
   if (!active) return null;
 
-  const c1   = active.color  || color;
-  const c2   = active.color2 || color2;
+  const isWordPop = (active.animation || globalAnimation) === "word_pop";
+  let c1 = active.color || color;
+  let c2: string | null = active.color2 || color2;
+
+  if (isWordPop) {
+    c1 = WORD_POP_PALETTE[activeIdx % WORD_POP_PALETTE.length];
+    c2 = null;
+  }
+
   const anim = ANIM_MAP[active.animation || globalAnimation] || ANIM_MAP.pop;
   const effectKey = active.effect || globalEffect || "";
   const effectSx  = EFFECT_STYLE[effectKey] ?? {};
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const container = videoContainerRef?.current;
+    if (!container || !onPositionChange) return;
+
+    const move = (ev: MouseEvent) => {
+      const rect = container.getBoundingClientRect();
+      const x = Math.max(5, Math.min(95, ((ev.clientX - rect.left) / rect.width) * 100));
+      const y = Math.max(5, Math.min(95, ((ev.clientY - rect.top) / rect.height) * 100));
+      onPositionChange(x, y);
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  };
+
+  const colorSx = c2 ? {
+    background: `linear-gradient(90deg,${c1},${c2})`,
+    WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+    backgroundClip: "text",
+    filter: effectSx.filter ?? "drop-shadow(1px 1px 3px rgba(0,0,0,0.95))",
+  } : {
+    color: c1,
+    textShadow: effectSx.textShadow ?? "2px 2px 0 #000,-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,0 3px 8px rgba(0,0,0,0.85)",
+  };
+
   return (
-    // Outer — fixed position anchor (never animates)
-    <Box sx={{
-      position: "absolute", bottom: "8%", left: "50%",
-      transform: "translateX(-50%)",
-      textAlign: "center", pointerEvents: "none",
-      maxWidth: "85%", px: 1,
-    }}>
+    <Box
+      onMouseDown={handleMouseDown}
+      sx={{
+        position: "absolute",
+        left: `${subX}%`, top: `${subY}%`,
+        transform: "translate(-50%, -50%)",
+        textAlign: "center",
+        pointerEvents: onPositionChange ? "auto" : "none",
+        maxWidth: "85%", px: 1,
+        cursor: onPositionChange ? "move" : "default",
+        userSelect: "none",
+      }}
+    >
       {/* Inner — CSS animation plays here, keyed by chunk id to retrigger */}
       <Box key={active.id} sx={{
-        fontFamily: '"DejaVu Sans Bold","Arial Black",Arial,sans-serif',
-        fontSize: "clamp(14px,2.8vw,28px)", fontWeight: 900, lineHeight: 1.3,
+        fontFamily: isWordPop
+          ? '"Barlow Condensed","Arial Narrow",Arial,sans-serif'
+          : '"DejaVu Sans Bold","Arial Black",Arial,sans-serif',
+        fontSize: isWordPop ? "clamp(18px,4.5vw,44px)" : "clamp(14px,2.8vw,28px)",
+        fontWeight: 900, lineHeight: 1.3,
+        letterSpacing: isWordPop ? "0.05em" : "normal",
+        textTransform: isWordPop ? "uppercase" : "none",
         animation: anim,
+        WebkitTextStroke: isWordPop ? "1.5px rgba(0,0,0,0.8)" : undefined,
         ...effectSx,
-        ...(c2 ? {
-          background: `linear-gradient(90deg,${c1},${c2})`,
-          WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-          backgroundClip: "text",
-          filter: effectSx.filter ?? "drop-shadow(1px 1px 3px rgba(0,0,0,0.95))",
-        } : {
-          color: c1,
-          textShadow: effectSx.textShadow ?? "2px 2px 0 #000,-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,0 3px 8px rgba(0,0,0,0.85)",
-        }),
+        ...colorSx,
       }}>
         {active.text}
       </Box>
@@ -272,6 +321,8 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
     ...JSON.parse(JSON.stringify(initial)),
     trim_start: initial.trim_start ?? 0,
     trim_end: initial.trim_end ?? null,
+    sub_x: initial.sub_x ?? 50,
+    sub_y: initial.sub_y ?? 87.5,
   });
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -280,6 +331,7 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoContainerRef = useRef<HTMLDivElement>(null);
 
   const trimStart = data.trim_start;
   const trimEnd   = data.trim_end ?? duration;
@@ -394,7 +446,7 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
 
         {/* Video player */}
         <Box sx={{ flex: "0 0 auto", width: { xs: "100%", md: "60%" } }}>
-          <Box sx={{ position: "relative", bgcolor: "#000", borderRadius: 2, overflow: "hidden" }}>
+          <Box ref={videoContainerRef} sx={{ position: "relative", bgcolor: "#000", borderRadius: 2, overflow: "hidden" }}>
           {/* inject animation keyframes once */}
           <style>{ANIM_STYLE}</style>
             <video
@@ -407,7 +459,11 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
             <SubOverlay chunks={data.chunks} t={currentTime}
               color={data.color} color2={data.color2}
               globalAnimation={data.global_animation}
-              globalEffect={data.global_effect ?? null} />
+              globalEffect={data.global_effect ?? null}
+              subX={data.sub_x ?? 50} subY={data.sub_y ?? 87.5}
+              videoContainerRef={videoContainerRef}
+              onPositionChange={(x, y) => setData(d => ({ ...d, sub_x: x, sub_y: y }))}
+            />
           </Box>
 
           {/* Playback controls */}
@@ -598,6 +654,17 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
                         style={{ opacity: 0, width: 0, height: 0, position: "absolute" }} />
                     </Box>
                   )}
+                </Box>
+
+                {/* Position indicator */}
+                <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Позиція: {Math.round(data.sub_x ?? 50)}% × {Math.round(data.sub_y ?? 87.5)}%
+                  </Typography>
+                  <Button size="small" variant="text" sx={{ fontSize: "0.65rem", minWidth: 0, px: 1 }}
+                    onClick={() => setData(d => ({ ...d, sub_x: 50, sub_y: 87.5 }))}>
+                    скинути
+                  </Button>
                 </Box>
               </Box>
 
