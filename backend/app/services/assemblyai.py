@@ -9,6 +9,7 @@ def _transcribe_sync(file_path: str) -> List[Dict]:
 
     transcriber = aai.Transcriber()
     config = aai.TranscriptionConfig(
+        speech_model=aai.SpeechModel.best,
         language_detection=True,
         punctuate=True,
         format_text=True,
