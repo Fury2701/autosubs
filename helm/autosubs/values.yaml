@@ -35,8 +35,8 @@ frontend:
 
 ingress:
   enabled: true
-  className: nginx
-  host: autosubs.example.com
+  className: traefik
+  host: autosubs.10.1.1.4.nip.io
   tls: []
   # tls:
   #   - secretName: autosubs-tls
