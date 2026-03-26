@@ -3,18 +3,25 @@ from typing import List, Dict, Optional
 import assemblyai as aai
 from app.config import ASSEMBLYAI_API_KEY
 
+# universal-3-pro supports: EN, ES, PT, FR, DE, IT
+# universal-2 supports: 99 languages (fallback for everything else)
+# We always pass both so AssemblyAI picks the best available model for the language.
+SPEECH_MODELS = ["universal-3-pro", "universal-2"]
+
 
 def _transcribe_sync(file_path: str, language: Optional[str]) -> List[Dict]:
     aai.settings.api_key = ASSEMBLYAI_API_KEY
 
     if language and language != "auto":
         config = aai.TranscriptionConfig(
+            speech_models=SPEECH_MODELS,
             language_code=language,
             punctuate=True,
             format_text=True,
         )
     else:
         config = aai.TranscriptionConfig(
+            speech_models=SPEECH_MODELS,
             language_detection=True,
             punctuate=True,
             format_text=True,
