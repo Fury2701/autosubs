@@ -1,7 +1,7 @@
 backend:
   image:
     repository: ghcr.io/fury2701/autosubs-backend
-    tag: 47ab112b71406ec57fca8abd2e95fe786097ac4d  # backend
+    tag: b3151ddf4da6f4985e904f1f161946027bd5e35c  # backend
     pullPolicy: Always
   replicas: 1
   resources:
@@ -22,7 +22,7 @@ backend:
 frontend:
   image:
     repository: ghcr.io/fury2701/autosubs-frontend
-    tag: 47ab112b71406ec57fca8abd2e95fe786097ac4d  # frontend
+    tag: b3151ddf4da6f4985e904f1f161946027bd5e35c  # frontend
     pullPolicy: Always
   replicas: 1
   resources:
