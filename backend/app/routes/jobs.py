@@ -64,6 +64,7 @@ def _run_ffmpeg(
         "-vf", f"ass={ass_esc}",
         "-c:v", "libx264", "-preset", "fast", "-crf", "20",
         "-c:a", "aac", "-b:a", "192k",
+        "-movflags", "+faststart",   # moov atom at front → instant browser seek
         str(out),
     ]
     r = subprocess.run(cmd, capture_output=True, timeout=600)

@@ -341,7 +341,10 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    const onTime = () => setCurrentTime(v.currentTime);
+    // Only update time during normal playback; ignore timeupdate while seeking
+    // (browser fires timeupdate with stale/zero time during seek, which resets the playhead)
+    const onTime   = () => { if (!v.seeking) setCurrentTime(v.currentTime); };
+    const onSeeked = () => setCurrentTime(v.currentTime);
     const onMeta = () => {
       const d = v.duration;
       if (d && isFinite(d) && d > 0) {
@@ -352,11 +355,13 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
     const onPlay  = () => setPlaying(true);
     const onPause = () => setPlaying(false);
     v.addEventListener("timeupdate", onTime);
+    v.addEventListener("seeked", onSeeked);
     v.addEventListener("loadedmetadata", onMeta);
     v.addEventListener("play", onPlay);
     v.addEventListener("pause", onPause);
     return () => {
       v.removeEventListener("timeupdate", onTime);
+      v.removeEventListener("seeked", onSeeked);
       v.removeEventListener("loadedmetadata", onMeta);
       v.removeEventListener("play", onPlay);
       v.removeEventListener("pause", onPause);
