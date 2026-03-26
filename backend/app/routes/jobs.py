@@ -17,7 +17,8 @@ import app.store as store
 
 router = APIRouter(prefix="/api/jobs")
 
-VALID_ANIMATIONS = {"pop", "karaoke", "fade", "typewriter", "slide_up", "bounce", "glow", "zoom_in"}
+VALID_ANIMATIONS = {"pop", "karaoke", "fade", "typewriter", "slide_up", "bounce", "glow", "zoom_in", "spin", "drop_in", "cinema", "flip", "glitch"}
+VALID_EFFECTS = {"glow", "shake", "shadow", "outline"}
 
 
 def _set(job: Job, status: JobStatus, progress: int) -> None:
@@ -78,6 +79,7 @@ async def _process(
     job_id: str, inp: Path, job_dir: Path,
     language: Optional[str], animation: str,
     color: str, color2: Optional[str],
+    effect: Optional[str] = None,
 ) -> None:
     job = _get_or_404(job_id)
     try:
@@ -89,6 +91,9 @@ async def _process(
         subtitle_data, word_map = create_ass(
             words, str(ass), animation=animation, color=color, color2=color2
         )
+
+        if effect:
+            subtitle_data.global_effect = effect
 
         _chunks_path(job_id).write_text(
             subtitle_data.model_dump_json(indent=2), encoding="utf-8"
@@ -158,6 +163,7 @@ async def create_job(
     animation: str = Form("pop"),
     color: str = Form("#FFFFFF"),
     color2: Optional[str] = Form(None),
+    effect: Optional[str] = Form(None),
 ):
     suffix = Path(file.filename).suffix.lower() if file.filename else ".mp4"
     if suffix not in {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}:
@@ -168,6 +174,8 @@ async def create_job(
         color = "#FFFFFF"
     if color2 and (not color2.startswith("#") or len(color2) != 7):
         color2 = None
+    if effect and effect not in VALID_EFFECTS:
+        effect = None
 
     job_id  = str(uuid.uuid4())
     job_dir = STORAGE_DIR / job_id
@@ -186,7 +194,7 @@ async def create_job(
 
     job = Job(id=job_id, filename=file.filename)
     _set(job, JobStatus.PENDING, 5)
-    background_tasks.add_task(_process, job_id, inp, job_dir, language, animation, color, color2)
+    background_tasks.add_task(_process, job_id, inp, job_dir, language, animation, color, color2, effect)
     return {"job_id": job_id}
 
 

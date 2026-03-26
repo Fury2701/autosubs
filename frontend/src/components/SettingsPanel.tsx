@@ -44,6 +44,18 @@ export const ANIMATIONS = [
   { value: "bounce",     label: "BOUNCE",     emoji: "🏀", desc: "Гумовий відскок" },
   { value: "glow",       label: "GLOW",       emoji: "💡", desc: "Неоновий розмив" },
   { value: "zoom_in",    label: "ZOOM",       emoji: "🔍", desc: "Zoom від великого" },
+  { value: "spin",       label: "SPIN",       emoji: "🌀", desc: "Обертання" },
+  { value: "drop_in",    label: "DROP",       emoji: "⬇️", desc: "Падіння зверху" },
+  { value: "cinema",     label: "CINEMA",     emoji: "🎬", desc: "Кіно-розтяжка" },
+  { value: "flip",       label: "FLIP",       emoji: "🔄", desc: "Розкриття" },
+  { value: "glitch",     label: "GLITCH",     emoji: "⚡", desc: "Цифровий глітч" },
+];
+
+export const EFFECTS = [
+  { value: "glow",    label: "GLOW",    emoji: "💡", desc: "Неонове сяяння" },
+  { value: "shake",   label: "SHAKE",   emoji: "📳", desc: "Тремтіння" },
+  { value: "shadow",  label: "SHADOW",  emoji: "🌑", desc: "Велика тінь" },
+  { value: "outline", label: "OUTLINE", emoji: "◻️", desc: "Контур, що пульсує" },
 ];
 
 const COLOR_PRESETS = [
@@ -119,6 +131,7 @@ function ColorPickerRaw({
 export default function SettingsPanel({ settings, onChange }: Props) {
   const set = (patch: Partial<JobSettings>) => onChange({ ...settings, ...patch });
   const hasGradient = !!settings.color2;
+  const toggleEffect = (val: string) => set({ effect: settings.effect === val ? null : val });
 
   return (
     <Paper
@@ -172,6 +185,44 @@ export default function SettingsPanel({ settings, onChange }: Props) {
               >
                 <span style={{ fontSize: 18 }}>{a.emoji}</span>
                 {a.label}
+              </ToggleButton>
+            </Tooltip>
+          ))}
+        </Box>
+      </Box>
+
+      {/* Effects */}
+      <Box>
+        <Typography variant="caption" color="text.secondary" mb={1} display="block">
+          🔮 Ефект (поверх анімації)
+        </Typography>
+        <Box display="flex" flexWrap="wrap" gap={0.8}>
+          {EFFECTS.map((ef) => (
+            <Tooltip key={ef.value} title={ef.desc} arrow>
+              <ToggleButton
+                value={ef.value}
+                selected={settings.effect === ef.value}
+                onChange={() => toggleEffect(ef.value)}
+                size="small"
+                sx={{
+                  flexDirection: "column",
+                  px: 1.5, py: 1,
+                  gap: 0.3,
+                  fontWeight: 600,
+                  fontSize: "0.65rem",
+                  lineHeight: 1.2,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: "10px !important",
+                  "&.Mui-selected": {
+                    background: "linear-gradient(135deg, #7C5CFC33, #00E5FF22)",
+                    borderColor: "primary.main",
+                    color: "primary.light",
+                  },
+                }}
+              >
+                <span style={{ fontSize: 18 }}>{ef.emoji}</span>
+                {ef.label}
               </ToggleButton>
             </Tooltip>
           ))}

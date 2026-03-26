@@ -201,15 +201,30 @@ def _karaoke(words: List[Dict], body: str, s: float, e: float,
 
 
 def _typewriter(body: str, s: float, e: float) -> str:
-    dur_cs = max(10, round((e - s) * 100))
-    chars = list(body)
+    """Each step reveals one more character as a separate Dialogue event.
+    No inline \\t/\\alpha tags → no libass parsing issues with Cyrillic.
+
+    body may start with an ASS tag block like {\\c&H...&} — we preserve it
+    as a prefix and only slice the visible text portion.
+    """
+    # Split leading ASS tag block from visible text
+    prefix = ""
+    text = body
+    if body.startswith("{"):
+        close = body.find("}")
+        if close != -1:
+            prefix = body[: close + 1]
+            text = body[close + 1 :]
+
+    chars = list(text)
     n = max(len(chars), 1)
-    parts = ["{\\fad(0,150)}"]
-    for i, ch in enumerate(chars):
-        t1 = round(i / n * dur_cs * 0.75)
-        t2 = min(t1 + 8, dur_cs)
-        parts.append(f"{{\\alpha&HFF&\\t({t1},{t2},\\alpha&H00&)}}{ch}")
-    return _dlg(s, e, "".join(parts))
+    char_dur = (e - s) / n
+    lines = []
+    for i in range(n):
+        t_start = s + i * char_dur
+        t_end = t_start + char_dur if i < n - 1 else e
+        lines.append(_dlg(t_start, t_end, prefix + "".join(chars[: i + 1])))
+    return "".join(lines)
 
 
 def _slide_up(body: str, s: float, e: float) -> str:
@@ -237,6 +252,63 @@ def _zoom_in(body: str, s: float, e: float) -> str:
         "{\\fad(0,150)\\fscx220\\fscy220\\t(0,220,\\fscx100\\fscy100)}" + body)
 
 
+def _spin(body: str, s: float, e: float) -> str:
+    return _dlg(s, e,
+        "{\\fad(0,150)\\frz-360\\t(0,350,\\frz5)\\t(350,430,\\frz0)}" + body)
+
+
+def _drop_in(body: str, s: float, e: float) -> str:
+    return _dlg(s, e,
+        "{\\move(960,880,960,990,0,300)\\fad(0,150)}" + body)
+
+
+def _cinema(body: str, s: float, e: float) -> str:
+    return _dlg(s, e,
+        "{\\fad(200,200)\\fscx220\\t(0,300,\\fscx100)}" + body)
+
+
+def _flip(body: str, s: float, e: float) -> str:
+    return _dlg(s, e,
+        "{\\fad(0,150)\\fscy0\\t(0,180,\\fscy118)\\t(180,260,\\fscy94)\\t(260,300,\\fscy100)}" + body)
+
+
+def _glitch(body: str, s: float, e: float) -> str:
+    return _dlg(s, e,
+        "{\\fad(0,80)"
+        "\\t(0,45,\\fscx135\\blur3)"
+        "\\t(45,90,\\fscx72\\blur0)"
+        "\\t(90,130,\\fscx118\\blur2)"
+        "\\t(130,170,\\fscx88)"
+        "\\t(170,210,\\fscx100)}" + body)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Effect modifiers  (combinable on top of any animation)
+# ──────────────────────────────────────────────────────────────────────────────
+
+_EFFECT_TAGS: Dict[str, str] = {
+    "glow":    "\\blur14\\t(0,400,\\blur2)",
+    "shake":   "\\t(0,70,\\frz6)\\t(70,140,\\frz-6)\\t(140,200,\\frz3)\\t(200,240,\\frz0)",
+    "shadow":  "\\shad12\\t(0,320,\\shad5)",
+    "outline": "\\bord10\\t(0,260,\\bord4)",
+}
+
+
+def _apply_effect(dialogue: str, effect: str) -> str:
+    """Inject effect tags into the first {…} block of every Dialogue line."""
+    tags = _EFFECT_TAGS.get(effect)
+    if not tags:
+        return dialogue
+    lines = []
+    for line in dialogue.splitlines(keepends=True):
+        if line.startswith("Dialogue:") and "{" in line:
+            close = line.find("}")
+            if close != -1:
+                line = line[:close] + tags + line[close:]
+        lines.append(line)
+    return "".join(lines)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Chunk renderer
 # ──────────────────────────────────────────────────────────────────────────────
@@ -247,6 +319,7 @@ def _render_chunk(
     global_color: str,
     global_color2: Optional[str],
     word_map: Dict[int, List[Dict]],
+    global_effect: Optional[str] = None,
 ) -> str:
     anim   = chunk.animation or global_animation
     c1     = chunk.color  or global_color
@@ -255,7 +328,10 @@ def _render_chunk(
     words  = word_map.get(chunk.id, [])
 
     # Build coloured text body
-    if c2:
+    # Typewriter iterates over individual characters, so gradient (which wraps
+    # each char in its own ASS tag) would break the character-slicing logic.
+    # Use a single solid colour for typewriter instead.
+    if c2 and anim != "typewriter":
         body = _gradient_text(chunk.text, c1, c2)
     else:
         body = f"{{\\c{hex_to_ass(c1)}&}}{chunk.text}"
@@ -275,9 +351,18 @@ def _render_chunk(
         "bounce":     _bounce,
         "glow":       _glow,
         "zoom_in":    _zoom_in,
+        "spin":       _spin,
+        "drop_in":    _drop_in,
+        "cinema":     _cinema,
+        "flip":       _flip,
+        "glitch":     _glitch,
     }
     build = builders.get(anim, _pop)
-    return build(body, s, e)
+    result = build(body, s, e)
+    effect = chunk.effect or global_effect
+    if effect:
+        result = _apply_effect(result, effect)
+    return result
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -299,7 +384,7 @@ def create_ass_from_data(
         fh.write(_header(primary, secondary))
         for chunk in sorted(data.chunks, key=lambda c: c.start):
             fh.write(_render_chunk(chunk, data.global_animation, data.color,
-                                   data.color2, wmap))
+                                   data.color2, wmap, data.global_effect))
 
 
 def create_ass(

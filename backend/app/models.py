@@ -39,6 +39,7 @@ class SubtitleChunk(BaseModel):
     animation: Optional[str] = None   # None → global
     color: Optional[str] = None       # None → global
     color2: Optional[str] = None      # None → global (gradient end)
+    effect: Optional[str] = None      # None → global
 
 
 class SubtitleData(BaseModel):
@@ -46,5 +47,6 @@ class SubtitleData(BaseModel):
     color: str = "#FFFFFF"
     color2: Optional[str] = None
     global_animation: str = "pop"
+    global_effect: Optional[str] = None
     trim_start: float = 0.0           # seconds; 0 = no trim
     trim_end: Optional[float] = None  # None = no trim

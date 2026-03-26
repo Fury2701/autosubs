@@ -10,7 +10,7 @@ import MovieFilterIcon from "@mui/icons-material/MovieFilter";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import PaletteIcon from "@mui/icons-material/Palette";
 import { SubtitleData, SubtitleChunk, rerender } from "../api/client";
-import { ANIMATIONS } from "./SettingsPanel";
+import { ANIMATIONS, EFFECTS } from "./SettingsPanel";
 
 interface Props {
   jobId: string;
@@ -105,7 +105,7 @@ export default function SubtitleEditor({
     const ns = prev ? prev.end + 0.1 : 0;
     const ne = next ? Math.min(next.start - 0.1, ns + 1) : ns + 1;
     const nc: SubtitleChunk = { id: Date.now(), text: "New subtitle", start: ns, end: ne,
-                                animation: null, color: null, color2: null };
+                                animation: null, color: null, color2: null, effect: null };
     const chunks = [...data.chunks];
     chunks.splice(idx + 1, 0, nc);
     setData((d) => ({ ...d, chunks }));
@@ -143,6 +143,15 @@ export default function SubtitleEditor({
             <MenuItem value=""><em>Без анімації</em></MenuItem>
             {ANIMATIONS.map((a) => (
               <MenuItem key={a.value} value={a.value}>{a.emoji} {a.label}</MenuItem>
+            ))}
+          </Select>
+
+          {/* Global effect */}
+          <Select size="small" value={data.global_effect ?? ""} sx={{ minWidth: 130 }}
+            onChange={(e) => setData((d) => ({ ...d, global_effect: e.target.value || null }))}>
+            <MenuItem value=""><em>Без ефекту</em></MenuItem>
+            {EFFECTS.map((ef) => (
+              <MenuItem key={ef.value} value={ef.value}>{ef.emoji} {ef.label}</MenuItem>
             ))}
           </Select>
 
@@ -241,6 +250,21 @@ export default function SubtitleEditor({
                   <MenuItem value=""><em>авто (глобальна)</em></MenuItem>
                   {ANIMATIONS.map((a) => (
                     <MenuItem key={a.value} value={a.value}>{a.emoji} {a.label} — {a.desc}</MenuItem>
+                  ))}
+                </Select>
+
+                {/* Per-chunk effect */}
+                <Select size="small" value={chunk.effect ?? ""} displayEmpty
+                  sx={{ minWidth: 130 }}
+                  onChange={(e) => upd(chunk.id, { effect: e.target.value || null })}
+                  renderValue={(v) => {
+                    if (!v) return <Typography variant="caption" color="text.secondary">без ефекту</Typography>;
+                    const ef = EFFECTS.find((x) => x.value === v);
+                    return ef ? `${ef.emoji} ${ef.label}` : v;
+                  }}>
+                  <MenuItem value=""><em>без ефекту</em></MenuItem>
+                  {EFFECTS.map((ef) => (
+                    <MenuItem key={ef.value} value={ef.value}>{ef.emoji} {ef.label} — {ef.desc}</MenuItem>
                   ))}
                 </Select>
 

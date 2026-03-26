@@ -13,7 +13,7 @@ import PauseIcon from "@mui/icons-material/Pause";
 import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
 import { SubtitleData, SubtitleChunk, rerender, downloadUrl, previewUrl } from "../api/client";
-import { ANIMATIONS } from "./SettingsPanel";
+import { ANIMATIONS, EFFECTS } from "./SettingsPanel";
 
 interface Props {
   jobId: string;
@@ -47,6 +47,11 @@ const ANIM_STYLE = `
 @keyframes sub-zoom     { from { transform: scale(2.4); opacity:0 } to { transform: scale(1); opacity:1 } }
 @keyframes sub-type     { from { clip-path: inset(0 100% 0 0) } to { clip-path: inset(0 0% 0 0) } }
 @keyframes sub-karaoke  { from { opacity: 0 } to { opacity: 1 } }
+@keyframes sub-spin    { from { transform: rotate(-360deg) scale(0.6); opacity:0 } to { transform: rotate(0deg) scale(1); opacity:1 } }
+@keyframes sub-drop    { from { transform: translateY(-28px) scaleY(0.4); opacity:0 } to { transform: translateY(0) scaleY(1); opacity:1 } }
+@keyframes sub-cinema  { from { transform: scaleX(2.2); opacity:0 } to { transform: scaleX(1); opacity:1 } }
+@keyframes sub-flip    { from { transform: scaleY(0); opacity:0 } to { transform: scaleY(1); opacity:1 } }
+@keyframes sub-glitch  { 0%{transform:scaleX(1.35) skewX(-4deg);opacity:.7} 25%{transform:scaleX(0.75) skewX(4deg)} 50%{transform:scaleX(1.15)} 75%{transform:scaleX(0.93)} 100%{transform:scaleX(1);opacity:1} }
 `;
 
 const ANIM_MAP: Record<string, string> = {
@@ -58,12 +63,24 @@ const ANIM_MAP: Record<string, string> = {
   zoom_in:    "sub-zoom 0.22s ease both",
   typewriter: "sub-type 0.7s steps(24) both",
   karaoke:    "sub-karaoke 0.15s ease both",
+  spin:       "sub-spin 0.45s cubic-bezier(.34,1.3,.64,1) both",
+  drop_in:    "sub-drop 0.32s cubic-bezier(.34,1.56,.64,1) both",
+  cinema:     "sub-cinema 0.32s cubic-bezier(.25,1,.5,1) both",
+  flip:       "sub-flip 0.32s cubic-bezier(.34,1.56,.64,1) both",
+  glitch:     "sub-glitch 0.25s ease both",
+};
+
+const EFFECT_STYLE: Record<string, React.CSSProperties> = {
+  glow:    { filter: "drop-shadow(0 0 10px currentColor) brightness(1.4)" },
+  shake:   { filter: "blur(0.3px) brightness(1.1)" },
+  shadow:  { textShadow: "4px 6px 0 rgba(0,0,0,0.95),8px 12px 24px rgba(0,0,0,0.8)" },
+  outline: { WebkitTextStroke: "1.5px rgba(255,255,255,0.4)" },
 };
 
 // ── Subtitle overlay ─────────────────────────────────────────────────────────
-function SubOverlay({ chunks, t, color, color2, globalAnimation }: {
+function SubOverlay({ chunks, t, color, color2, globalAnimation, globalEffect }: {
   chunks: SubtitleChunk[]; t: number; color: string; color2: string | null;
-  globalAnimation: string;
+  globalAnimation: string; globalEffect: string | null;
 }) {
   const active = chunks.find(c => t >= c.start && t <= c.end);
   if (!active) return null;
@@ -71,6 +88,8 @@ function SubOverlay({ chunks, t, color, color2, globalAnimation }: {
   const c1   = active.color  || color;
   const c2   = active.color2 || color2;
   const anim = ANIM_MAP[active.animation || globalAnimation] || ANIM_MAP.pop;
+  const effectKey = active.effect || globalEffect || "";
+  const effectSx  = EFFECT_STYLE[effectKey] ?? {};
 
   return (
     // Outer — fixed position anchor (never animates)
@@ -85,14 +104,15 @@ function SubOverlay({ chunks, t, color, color2, globalAnimation }: {
         fontFamily: '"DejaVu Sans Bold","Arial Black",Arial,sans-serif',
         fontSize: "clamp(14px,2.8vw,28px)", fontWeight: 900, lineHeight: 1.3,
         animation: anim,
+        ...effectSx,
         ...(c2 ? {
           background: `linear-gradient(90deg,${c1},${c2})`,
           WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
           backgroundClip: "text",
-          filter: "drop-shadow(1px 1px 3px rgba(0,0,0,0.95))",
+          filter: effectSx.filter ?? "drop-shadow(1px 1px 3px rgba(0,0,0,0.95))",
         } : {
           color: c1,
-          textShadow: "2px 2px 0 #000,-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,0 3px 8px rgba(0,0,0,0.85)",
+          textShadow: effectSx.textShadow ?? "2px 2px 0 #000,-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,0 3px 8px rgba(0,0,0,0.85)",
         }),
       }}>
         {active.text}
@@ -324,7 +344,7 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
     const t = currentTime;
     setData(d => ({
       ...d,
-      chunks: [...d.chunks, { id, text: "New subtitle", start: t, end: t + 2, animation: null, color: null, color2: null }],
+      chunks: [...d.chunks, { id, text: "New subtitle", start: t, end: t + 2, animation: null, color: null, color2: null, effect: null }],
     }));
     setSelectedId(id);
   };
@@ -386,7 +406,8 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
             />
             <SubOverlay chunks={data.chunks} t={currentTime}
               color={data.color} color2={data.color2}
-              globalAnimation={data.global_animation} />
+              globalAnimation={data.global_animation}
+              globalEffect={data.global_effect ?? null} />
           </Box>
 
           {/* Playback controls */}
@@ -470,6 +491,20 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
                   ))}
                 </Select>
 
+                <Select size="small" fullWidth value={selected.effect ?? ""}
+                  displayEmpty
+                  onChange={(e) => updChunk(selected.id, { effect: e.target.value || null })}
+                  renderValue={(v) => {
+                    if (!v) return <Typography variant="caption" color="text.secondary">без ефекту</Typography>;
+                    const ef = EFFECTS.find(x => x.value === v);
+                    return ef ? `${ef.emoji} ${ef.label}` : v;
+                  }}>
+                  <MenuItem value=""><em>без ефекту</em></MenuItem>
+                  {EFFECTS.map(ef => (
+                    <MenuItem key={ef.value} value={ef.value}>{ef.emoji} {ef.label} — {ef.desc}</MenuItem>
+                  ))}
+                </Select>
+
                 {/* Per-chunk colors */}
                 <Box>
                   <Typography variant="caption" color="text.secondary" mb={0.5} display="block">
@@ -535,6 +570,14 @@ export default function VideoEditor({ jobId, initial, onBack, onRerenderStarted 
                   onChange={(e) => setData(d => ({ ...d, global_animation: e.target.value }))}>
                   {ANIMATIONS.map(a => (
                     <MenuItem key={a.value} value={a.value}>{a.emoji} {a.label}</MenuItem>
+                  ))}
+                </Select>
+                <Select size="small" fullWidth value={data.global_effect ?? ""}
+                  displayEmpty
+                  onChange={(e) => setData(d => ({ ...d, global_effect: e.target.value || null }))}>
+                  <MenuItem value=""><em>Без ефекту</em></MenuItem>
+                  {EFFECTS.map(ef => (
+                    <MenuItem key={ef.value} value={ef.value}>{ef.emoji} {ef.label}</MenuItem>
                   ))}
                 </Select>
                 <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>

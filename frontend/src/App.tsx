@@ -21,6 +21,7 @@ const DEFAULT_SETTINGS: JobSettings = {
   animation: "pop",
   color: "#FFFFFF",
   color2: null,
+  effect: null,
 };
 
 export default function App() {
