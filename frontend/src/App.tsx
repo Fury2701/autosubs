@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS: JobSettings = {
   language: "auto",
   animation: "pop",
   color: "#FFFFFF",
+  color2: null,
 };
 
 export default function App() {
